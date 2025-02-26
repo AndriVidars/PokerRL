@@ -2,6 +2,7 @@ from core.action import Card
 from core.gamestage import Stage
 from core.action import Action
 from typing import List, Tuple
+from util import remap_numbers
 
 class Player():
     """
@@ -11,12 +12,10 @@ class Player():
     For now, the history assumes that each player only acts once during a stage.
     """
     def __init__(self,
-        in_game: bool, # whether the player is still in the game
         spots_left_bb: int, # how many seats to the left is player from bb
         cards: Tuple[Card, Card] | None, # None if not visible
         stack_size: int,
     ):
-        self.in_game = in_game
         self.spots_left_bb = spots_left_bb
         self.cards = cards
         self.stack_size = stack_size
@@ -37,6 +36,17 @@ class Player():
     def add_river_action(self, action: Action, raise_size: int | None):
         assert len(self.history) == 3
         self.history.append((action, raise_size))
+
+    def turn_to_play(self, stage: Stage, ttl_players:int):
+        # returns what turn the player acted/should act on in a given stage
+        # assuming no players have folded. 0 is first.
+        if stage == Stage.PREFLOP:
+            return (self.spot_left_bb - 1) % ttl_players
+        return (self.spots_left_bb + 1) % ttl_players
+    
+    @property
+    def in_game(self):
+        return not any([action == Action.FOLD for action, _ in self.history])
 
 class GameState():
     """
@@ -68,3 +78,24 @@ class GameState():
         to all possible hands.
         """
         assert False
+
+    @property
+    def community_hand_strenght(self):
+        """
+        TODO: implement this method so that it returns the ranking of the community cards
+        with respect to all possible cards.
+        """
+        assert False
+
+    def get_effective_turns(self):
+        # For every player returns None if the player is not in the game any more.
+        # Otherwise, returns their effective turn (i.e. removing all ppl that folded).
+        ttl_players = 1 + len(self.other_players)
+        all_players = [self.curr_player] + self.other_players
+        absolute_turns = [player.turn_to_play(self.stage, ttl_players) for player in all_players]
+        in_game_turns = [turn if player.in_game else None for turn, player in zip(absolute_turns, all_players)]
+        in_game_turns = remap_numbers(in_game_turns)
+        
+        my_player_in_game_turn = in_game_turns[0]
+        other_players_in_game_turn = in_game_turns[1:]
+        return my_player_in_game_turn, other_players_in_game_turn
