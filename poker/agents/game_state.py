@@ -7,6 +7,8 @@ class Player():
     """
     Represents the state of a player. The most important part is the history,
     which holds all the actions the player has made.
+
+    For now, the history assumes that each player only acts once during a stage.
     """
     def __init__(self,
         in_game: bool, # whether the player is still in the game
