@@ -60,3 +60,11 @@ class GameState():
         self.my_player = my_player
         self.other_players = other_players
         self.my_player_action = my_player_action
+
+    @property
+    def hand_strength(self):
+        """
+        TODO: implement this method so that it returns the ranking of the hand with respect
+        to all possible hands.
+        """
+        assert False
