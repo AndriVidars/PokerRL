@@ -39,18 +39,40 @@ class Game:
         self.big_blind_idx = (self.dealer_idx + 2) % len(self.players)
     
     def gameplay_loop(self):
-        while True:
-            match self.current_stage:
-                case Stage.PREFLOP:
-                    self.preflop()
-                case Stage.FLOP:
-                    self.flop()
-                case Stage.TURN:
+        # Play one complete hand
+        try:
+            # Play each stage in order
+            self.preflop()
+            
+            # Only continue if more than one player is active
+            if len(self.active_players) > 1:
+                self.next_stage()  # Move to FLOP
+                self.flop()
+                
+                if len(self.active_players) > 1:
+                    self.next_stage()  # Move to TURN
                     self.turn()
-                case Stage.RIVER:
-                    self.river()
-
-            self.next_stage()
+                    
+                    if len(self.active_players) > 1:
+                        self.next_stage()  # Move to RIVER
+                        self.river()
+            
+            # Reset to PREFLOP for next hand
+            self.current_stage = Stage.PREFLOP
+            self.move_blinds()
+            
+            # Clear hands and reset player states
+            for player in self.players:
+                player.hand = []
+                player.folded = False
+                player.all_in = False
+                
+            # Reset community cards and pots
+            self.community_cards = []
+            self.pots = []
+        except Exception as e:
+            print(f"Error in gameplay loop: {e}")
+            raise
 
     def next_player(self, curr_player_idx: int):
         next_idx = (curr_player_idx + 1) % len(self.players)
@@ -160,7 +182,16 @@ class Game:
         player_hand_rankings = {x[1]: i for i, x in enumerate(player_hands)}  # player -> ranking
 
         for pot in self.pots:
-            pot_players = sorted(list(pot.eligible_players), key=lambda x: player_hand_rankings[x])
+            # Filter out players not eligible for this pot
+            eligible_pot_players = [p for p in pot.eligible_players if not p.folded]
+            if not eligible_pot_players:
+                continue
+                
+            # Sort eligible players by hand ranking
+            pot_players = sorted(list(eligible_pot_players), key=lambda x: player_hand_rankings.get(x, 999))
+            if not pot_players:
+                continue
+                
             tied_players = [pot_players[0]]
             for i in range(1, len(pot_players)):
                 if player_hands_dict[pot_players[i]] == player_hands_dict[pot_players[0]]:
@@ -171,6 +202,9 @@ class Game:
             amount_each = pot.total_amount // len(tied_players)
             remainder = pot.total_amount % len(tied_players)
 
+            # Store the winners for this pot
+            pot.winners = tied_players.copy()
+            
             for p in tied_players:
                 p.stack += amount_each
             

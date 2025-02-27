@@ -5,6 +5,7 @@ class Pot:
         self.total_amount = 0
         self.contributions = {}  # {Player: Amount Contributed}
         self.eligible_players = set()  # Players who can win this pot
+        self.winners = []  # Players who won this pot (to be filled after showdown)
 
     def add_contribution(self, player, amount):
         if player in self.contributions:

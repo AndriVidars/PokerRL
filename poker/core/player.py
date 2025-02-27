@@ -81,7 +81,7 @@ class Player:
         assert raise_amt <= self.stack
         self.stack -= raise_amt
         if self.stack == 0:
-            self.all_in
+            self.all_in = True
 
         pot = Pot()
         pot.add_contribution(self, raise_amt)

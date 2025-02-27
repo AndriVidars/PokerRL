@@ -1,9 +1,9 @@
-from core.action import Card
-from core.gamestage import Stage
-from core.action import Action
-from core.hand_evaluator import evaluate_hand
+from poker.core.card import Card
+from poker.core.gamestage import Stage
+from poker.core.action import Action
+from poker.core.hand_evaluator import evaluate_hand
 from typing import List, Tuple
-from util import remap_numbers
+from poker.agents.util import remap_numbers
 
 class Player():
     """
@@ -42,7 +42,7 @@ class Player():
         # returns what turn the player acted/should act on in a given stage
         # assuming no players have folded. 0 is first.
         if stage == Stage.PREFLOP:
-            return (self.spot_left_bb - 1) % ttl_players
+            return (self.spots_left_bb - 1) % ttl_players
         return (self.spots_left_bb + 1) % ttl_players
     
     @property
@@ -78,27 +78,40 @@ class GameState():
         # there's possibly a smarter/better way to do this
         rank, tbs = evaluate_hand(cards)
         strength = rank*10_000 + tbs[0]*100
-        if len(tbs > 1): strength += tbs[1]
+        if len(tbs) > 1: 
+            strength += tbs[1]
         return strength
 
     @property
     def hand_strength(self):
         """ Returns the hand strength of the hand with respect to all possible hands.
         """
-        return self.compute_hand_strength([self.my_player.cards] + self.community_cards)
+        # Handle both case where cards is a list or a tuple/single card
+        if not self.my_player.cards:
+            return 0  # No cards
+        
+        my_cards = self.my_player.cards
+        if not isinstance(my_cards, list):
+            if isinstance(my_cards, tuple):
+                my_cards = list(my_cards)
+            else:
+                my_cards = [my_cards]  # Convert single card to list
+                
+        return self.compute_hand_strength(my_cards + self.community_cards)
 
     @property
-    def community_hand_strenght(self):
+    def community_hand_strength(self):
         """ Returns the hand strength of the community hand with respect to all possible hands.
         """
-        if len(self.community_cards) == 0: return 0
+        if not self.community_cards or len(self.community_cards) == 0: 
+            return 0
         return self.compute_hand_strength(self.community_cards)
 
     def get_effective_turns(self):
         # For every player returns None if the player is not in the game any more.
         # Otherwise, returns their effective turn (i.e. removing all ppl that folded).
         ttl_players = 1 + len(self.other_players)
-        all_players = [self.curr_player] + self.other_players
+        all_players = [self.my_player] + self.other_players
         absolute_turns = [player.turn_to_play(self.stage, ttl_players) for player in all_players]
         in_game_turns = [turn if player.in_game else None for turn, player in zip(absolute_turns, all_players)]
         in_game_turns = remap_numbers(in_game_turns)

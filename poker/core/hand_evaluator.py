@@ -1,6 +1,6 @@
 from typing import List, Tuple
 from collections import Counter
-from card import Suit, RANK_ORDER, Card
+from poker.core.card import Suit, RANK_ORDER, Card
 import itertools
 
 def evaluate_hand(cards: List[Card]) -> Tuple[int, List]:
