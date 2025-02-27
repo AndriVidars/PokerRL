@@ -194,33 +194,42 @@ class PluribusParser:
         cards = []
         card_matches = re.finditer(r'(\d+|[AKQJT])([cdhs])', cards_str)
         
+        rank_map = {
+            'A': Rank.ACE,
+            'K': Rank.KING,
+            'Q': Rank.QUEEN,
+            'J': Rank.JACK,
+            'T': Rank.TEN,
+            '2': Rank.TWO,
+            '3': Rank.THREE,
+            '4': Rank.FOUR,
+            '5': Rank.FIVE,
+            '6': Rank.SIX,
+            '7': Rank.SEVEN,
+            '8': Rank.EIGHT,
+            '9': Rank.NINE
+        }
+        
+        suit_map = {
+            'c': Suit.CLUB,
+            'd': Suit.DIAMOND,
+            'h': Suit.HEART,
+            's': Suit.SPADE
+        }
+        
         for match in card_matches:
             rank_str = match.group(1)
             suit_str = match.group(2)
             
             # Convert rank string to Rank enum
-            if rank_str == 'A':
-                rank = Rank.ACE
-            elif rank_str == 'K':
-                rank = Rank.KING
-            elif rank_str == 'Q':
-                rank = Rank.QUEEN
-            elif rank_str == 'J':
-                rank = Rank.JACK
-            elif rank_str == 'T':
-                rank = Rank.TEN
+            if rank_str in rank_map:
+                rank = rank_map[rank_str]
             else:
-                rank = Rank(int(rank_str))
+                continue  # Skip invalid ranks
             
             # Convert suit string to Suit enum
-            if suit_str == 'c':
-                suit = Suit.CLUBS
-            elif suit_str == 'd':
-                suit = Suit.DIAMONDS
-            elif suit_str == 'h':
-                suit = Suit.HEARTS
-            elif suit_str == 's':
-                suit = Suit.SPADES
+            if suit_str in suit_map:
+                suit = suit_map[suit_str]
             else:
                 continue  # Skip invalid suits
             
@@ -351,59 +360,87 @@ class PluribusDataset:
         print(f"Extracted {len(pluribus_decisions)} Pluribus decisions")
         return pluribus_decisions
     
+    def _create_state_player(self, history: HandHistory, player_name: str, seat: int, 
+                               previous_actions: List[Tuple[str, Action, Optional[int]]]):
+        """
+        Create a Player object for the GameState class
+        """
+        from poker.agents.game_state import Player as StatePlayer
+        
+        # Get initial stack and calculate remaining stack
+        initial_stack = history.seats[seat][1]
+        remaining_stack = initial_stack
+        
+        for p, _, amount in previous_actions:
+            if p == player_name and amount is not None:
+                remaining_stack -= amount
+        
+        # Create state player
+        cards_list = history.player_hole_cards.get(player_name, [])
+        player = StatePlayer(
+            spots_left_bb=seat,  # Using seat as position
+            cards=cards_list,  # Pass the cards directly, not as a tuple
+            stack_size=remaining_stack
+        )
+        
+        # We need to track stages separately to add actions in the correct order
+        # First, group actions by player
+        player_actions = []
+        for p, action, amount in previous_actions:
+            if p == player_name:
+                player_actions.append((action, amount))
+        
+        # Add fold action if needed (to indicate player has folded)
+        if player_name in [p for p, a, _ in previous_actions if a == Action.FOLD]:
+            if not player_actions:
+                player_actions.append((Action.FOLD, None))
+            elif player_actions[-1][0] != Action.FOLD:
+                player_actions.append((Action.FOLD, None))
+        
+        # Just record the last action for simplicity
+        # The GameState class expects a specific history pattern by stage
+        if player_actions:
+            player.history = [player_actions[-1]]
+        
+        return player
+    
     def _construct_game_state(self, history: HandHistory, pluribus_seat: int, 
                              stage: Stage, community_cards: List[Card],
-                             previous_actions: List[Tuple[str, Action, Optional[int]]]) -> Dict:
+                             previous_actions: List[Tuple[str, Action, Optional[int]]]):
         """
-        Construct a game state dictionary at a specific decision point
+        Construct a GameState object at a specific decision point
         """
+        from poker.agents.game_state import GameState
+        
         # Calculate pot size and minimum bet to continue
         pot_size = self._calculate_pot_size(previous_actions)
         min_bet_to_continue = self._get_min_bet_to_continue(previous_actions, "Pluribus")
         
-        # Calculate player stacks after previous actions
-        player_stacks = {}
-        for seat, (player_name, initial_stack) in history.seats.items():
-            player_stacks[player_name] = initial_stack
-            
-        for player, action, amount in previous_actions:
-            if amount is not None and player in player_stacks:
-                player_stacks[player] -= amount
+        # Create Pluribus player
+        pluribus_player = self._create_state_player(
+            history, "Pluribus", pluribus_seat, previous_actions
+        )
         
-        # Create the game state dictionary (similar to our DQN format)
-        game_state = {
-            'stage': stage,
-            'community_cards': community_cards,
-            'pot_size': max(1, pot_size),  # Ensure non-zero pot size
-            'min_bet_to_continue': min_bet_to_continue,
-            'my_player': {
-                'stack_size': player_stacks.get("Pluribus", 0),
-                'hand': history.player_hole_cards.get("Pluribus", []),
-                'folded': False,  # Pluribus hasn't folded if we're at a decision point
-                'all_in': False,  # Same for all-in
-                'position': pluribus_seat
-            },
-            'other_players': []
-        }
-        
-        # Add other players info
+        # Create other players
+        other_players = []
         for seat, (player_name, _) in history.seats.items():
             if player_name != "Pluribus":
-                has_folded = any(p == player_name and a == Action.FOLD for p, a, _ in previous_actions)
-                
-                game_state['other_players'].append({
-                    'stack_size': player_stacks.get(player_name, 0),
-                    'position': seat,
-                    'folded': has_folded,
-                    'all_in': False  # Simplification, could be improved
-                })
+                other_players.append(
+                    self._create_state_player(
+                        history, player_name, seat, previous_actions
+                    )
+                )
         
-        # Calculate hand strength
-        cards = history.player_hole_cards.get("Pluribus", []) + community_cards
-        game_state['hand_strength'] = self._calculate_hand_strength(cards)
-        
-        # Calculate community card strength
-        game_state['community_strength'] = self._calculate_community_strength(community_cards)
+        # Create GameState
+        game_state = GameState(
+            stage=stage,
+            community_cards=community_cards,
+            pot_size=max(1, pot_size),  # Ensure non-zero pot size
+            min_bet_to_continue=min_bet_to_continue,
+            my_player=pluribus_player,
+            other_players=other_players,
+            my_player_action=None  # Will be filled later
+        )
         
         return game_state
     
@@ -504,17 +541,18 @@ def create_imitation_dataset(log_dir: str, output_file: str):
     actions = []
     raise_amounts = []
     
-    for state, action_idx, raise_amount in pluribus_decisions:
-        # Create feature vector similar to our DQN state representation
+    for game_state, action_idx, raise_amount in pluribus_decisions:
+        # Create feature vector for training
+        # We need to extract features from the GameState object
         features = [
-            state['pot_size'],
-            state['min_bet_to_continue'],
-            state['stage'].value,
-            state['my_player']['stack_size'],
-            state['hand_strength'],
-            state['community_strength'],
-            state['my_player']['position'],
-            len([p for p in state['other_players'] if not p['folded']])
+            game_state.pot_size,
+            game_state.min_bet_to_continue,
+            game_state.stage.value,
+            game_state.my_player.stack_size,
+            game_state.hand_strength,  # Use the property
+            game_state.community_hand_strength,  # Use the property
+            game_state.my_player.spots_left_bb,  # Position relative to big blind
+            len([p for p in game_state.other_players if p.in_game])  # Count active players
         ]
         
         states.append(features)
