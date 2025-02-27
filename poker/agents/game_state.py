@@ -1,6 +1,7 @@
 from core.action import Card
 from core.gamestage import Stage
 from core.action import Action
+from core.hand_evaluator import evaluate_hand
 from typing import List, Tuple
 from util import remap_numbers
 
@@ -71,21 +72,27 @@ class GameState():
         self.other_players = other_players
         self.my_player_action = my_player_action
 
+    @staticmethod
+    def compute_hand_strength(cards: List[Card]):
+        # computes hand strenght leveraging tie breakers
+        # there's possibly a smarter/better way to do this
+        rank, tbs = evaluate_hand(cards)
+        strength = rank*10_000 + tbs[0]*100
+        if len(tbs > 1): strength += tbs[1]
+        return strength
+
     @property
     def hand_strength(self):
+        """ Returns the hand strength of the hand with respect to all possible hands.
         """
-        TODO: implement this method so that it returns the ranking of the hand with respect
-        to all possible hands.
-        """
-        assert False
+        return self.compute_hand_strength([self.my_player.cards] + self.community_cards)
 
     @property
     def community_hand_strenght(self):
+        """ Returns the hand strength of the community hand with respect to all possible hands.
         """
-        TODO: implement this method so that it returns the ranking of the community cards
-        with respect to all possible cards.
-        """
-        assert False
+        if len(self.community_cards) == 0: return 0
+        return self.compute_hand_strength(self.community_cards)
 
     def get_effective_turns(self):
         # For every player returns None if the player is not in the game any more.
