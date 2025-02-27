@@ -1,6 +1,8 @@
 import re
 import os
 import glob
+import sys 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from typing import List, Dict, Tuple, Optional, Set
 from collections import defaultdict
 import numpy as np
