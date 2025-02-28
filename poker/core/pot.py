@@ -24,5 +24,4 @@ class Pot:
                 self.contributions[player] -= excess  
                 side_pot.add_contribution(player, excess) 
 
-
         return side_pot if side_pot.total_amount > 0 else None

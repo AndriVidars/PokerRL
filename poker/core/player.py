@@ -5,8 +5,6 @@ from poker.core.pot import Pot
 from typing import List
 from abc import abstractmethod
 
-
-
 class Player:
     def __init__(self, name:str, stack:int=0):
         self.name = name
@@ -44,6 +42,9 @@ class Player:
         for i, pot in enumerate(self.game.pots):            
             pot_max = max(pot.contributions.values())
             due = pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self]
+            if due not in [pot_max, 0]:
+                print(f"\n{'#'*40}\n{due}{'#'*40}\n")
+            # need to handle this, maybe the due is always pot max? since
             if due > self.stack:
                 self.all_in = True
                 amount_in = self.stack
@@ -73,15 +74,15 @@ class Player:
                 if self.stack == 0:
                     self.all_in = True
         
-            
     def handle_raise(self, raise_amt):
         self.handle_check_call() 
 
         # validate funds
         assert raise_amt <= self.stack
+        assert raise_amt >= self.game.min_bet
         self.stack -= raise_amt
         if self.stack == 0:
-            self.all_in
+            self.all_in = True
 
         pot = Pot()
         pot.add_contribution(self, raise_amt)

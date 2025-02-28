@@ -3,11 +3,12 @@ from poker.core.deck import Deck
 from poker.core.card import Card
 from poker.core.player import Player
 from poker.core.pot import Pot
-from poker.core.pokerhand import PokerHand
 from poker.core.gamestage import Stage
 from poker.core.action import Action
+import poker.core.hand_evaluator as hand_eval
 from typing import Optional, List, Set
 from itertools import combinations
+
 
 class Game:
     def __init__(self, players: List[Player], big_amount: int, small_amount: int):
@@ -19,10 +20,13 @@ class Game:
         self.big_blind_idx = (self.dealer_idx + 2) % len(self.players)
         self.current_stage = Stage.PREFLOP
         self.community_cards:List[Card] = []
-        self.min_bet = self.big_amount
+        self.min_bet = self.big_amount # TODO track min re-raise?
         self.pots:List[Pot] = []
         self.deck: Optional[Deck] = None 
         self.active_players:Optional[Set[Player]] = None # active players in each round - not all in or folded
+        self.game_completed = False
+        self.raise_in_round = False
+        self.rounds_played = 0
         self.verbose = True
 
         for player in self.players:
@@ -40,6 +44,7 @@ class Game:
     
     def gameplay_loop(self):
         while True:
+            self.raise_in_round = False
             match self.current_stage:
                 case Stage.PREFLOP:
                     self.preflop()
@@ -49,6 +54,10 @@ class Game:
                     self.turn()
                 case Stage.RIVER:
                     self.river()
+                    if self.game_completed:
+                        if self.verbose:
+                            print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
+                        return
 
             self.next_stage()
 
@@ -60,48 +69,78 @@ class Game:
         return next_idx
 
     def betting_loop(self):
+        if len(self.active_players) == 1:
+            return
+        
         match self.current_stage:
             case Stage.PREFLOP:
-                init_player_idx = (self.big_blind_idx + 1) % len(self.players)  # UTG starts preflop
+                curr_player_idx = (self.big_blind_idx + 1) % len(self.players)  # UTG starts preflop
             case _:
-                init_player_idx = (self.dealer_idx + 1) % len(self.players)  # First to act after dealer
+                curr_player_idx = (self.dealer_idx + 1) % len(self.players)  # First to act after dealer
 
-        while self.players[init_player_idx] not in self.active_players:
-            init_player_idx = self.next_player(init_player_idx)
+        while self.players[curr_player_idx] not in self.active_players:
+            curr_player_idx = self.next_player(curr_player_idx)
         
-        curr_player_idx = -1
-        while init_player_idx != curr_player_idx: # full round around table
-            if curr_player_idx == -1:
-                curr_player_idx = init_player_idx
-
+        init_player_idx = -1
+        while init_player_idx != curr_player_idx: # full round around table form first action(non-fold)d
             curr_player = self.players[curr_player_idx]
             action = curr_player.act()
+            if init_player_idx == -1 and action != Action.FOLD:
+                init_player_idx = curr_player_idx
             
             if action == Action.RAISE:
+                self.raise_in_round = True
                 init_player_idx = curr_player_idx
             
             if curr_player.all_in or curr_player.folded:
                 self.active_players.remove(curr_player)
             
-            curr_player_idx = self.next_player(curr_player_idx)
+            if len(self.active_players) == 1:
+                # this exists loop
+                break
+
+            curr_player_idx = self.next_player(curr_player_idx) # next player
+
     
-    def handle_blind(self, blind_idx, blind_amt):
-        player = self.players[blind_idx]
-        amount_in = min(player.stack, blind_amt)
-        player.stack -= amount_in
-        pot = Pot()
-        pot.add_contribution(player, amount_in)
-        self.pots.append(pot)
-        if player.stack == 0:
-            player.all_in = True
-            
+    def handle_blinds(self):
+        small_player, big_player = self.players[self.small_blind_idx], self.players[self.big_blind_idx]
+
+        big_player_amount_in = min(big_player.stack, self.big_amount)
+        small_player_amount_in = min(small_player.stack, self.small_amount)
+        big_player.stack -= big_player_amount_in
+        small_player.stack -= small_player_amount_in
+
+        small_pot = Pot()
+        small_pot_amt = min(big_player_amount_in, small_player_amount_in)
+        small_pot.add_contribution(small_player, small_pot_amt)
+        small_pot.add_contribution(big_player, small_pot_amt)
+        big_player_amount_in -= small_pot_amt
+        small_player_amount_in -= small_pot_amt
+
+        self.pots.append(small_pot)
+
+        if small_player_amount_in > 0:
+            small_pot_ = Pot()
+            small_pot_.add_contribution(small_player, small_player_amount_in)
+            self.pots.append(small_pot_)
+        
+        if big_player_amount_in > 0:
+            big_pot = Pot()
+            big_pot.add_contribution(big_player, big_player_amount_in)
+            self.pots.append(big_pot)
+        
+        small_player.all_in == small_player.stack == 0
+        big_player.all_in == big_player.stack == 0
+     
     def preflop(self):
+        self.pots = [] # reset
+        self.community_cards = []
+        self.rounds_played += 1
         if self.verbose:
             print(f"\n{25*'-'}\nPreflop\n{25*'-'}\n")
 
         self.active_players = set(self.players)
-        self.handle_blind(self.small_blind_idx, self.small_amount)
-        self.handle_blind(self.big_blind_idx, self.big_amount)
+        self.handle_blinds()
 
         self.deck = Deck()
         for _ in range(2):
@@ -147,23 +186,20 @@ class Game:
         
         self.betting_loop()
         self.decide_pot()
+
     
     def decide_pot(self):
-        player_hands = []
+        player_hands_rankings = {}
         for p in self.players:
             if not p.folded:
-                best_hand = sorted([PokerHand(list(c)) for c in combinations(self.community_cards + p.hand, 5)], reverse=True)[0]
-                player_hands.append((best_hand, p))
-
-        player_hands.sort(key=lambda x: x[0], reverse=True)
-        player_hands_dict = {x[1]: x[0] for x in player_hands}
-        player_hand_rankings = {x[1]: i for i, x in enumerate(player_hands)}  # player -> ranking
+                best_rank, best_tiebreakers = hand_eval._find_best_hand(self.community_cards + p.hand)
+                player_hands_rankings[p] = (best_rank, best_tiebreakers)
 
         for pot in self.pots:
-            pot_players = sorted(list(pot.eligible_players), key=lambda x: player_hand_rankings[x])
+            pot_players = sorted(list(pot.eligible_players), key=lambda x: player_hands_rankings[x], reverse=True)
             tied_players = [pot_players[0]]
             for i in range(1, len(pot_players)):
-                if player_hands_dict[pot_players[i]] == player_hands_dict[pot_players[0]]:
+                if player_hands_rankings[pot_players[i]] == player_hands_rankings[pot_players[0]]:
                     tied_players.append(pot_players[i])
                 else:
                     break
@@ -181,12 +217,16 @@ class Game:
         players = list(self.players)
         for p in players:
             if p.stack == 0:
+                self.players_eliminated.append((p, self.rounds_played))
                 self.players.remove(p)
-                print(f"Player {p} has been eliminated")
+                if self.verbose:
+                    print(f"Player {p} has been eliminated")
             else:
-                print(f"Player: {p} stack after round: {p.stack}")
+                if self.verbose:
+                    print(f"Player: {p} stack after {self.rounds_played} rounds: {p.stack}")
                 p.folded = False
                 p.all_in = False
 
-
-            
+        if len(self.players) == 1:
+            self.game_completed = True
+              

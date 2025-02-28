@@ -16,13 +16,13 @@ class PlayerIO(Player):
         
         print(f"Call Amount: {call_amt}")
         print(f"\nIt is {self}'s  turn - Hand: {self.hand} - Current Stack: {self.stack}")
-        action = Action(int(input("Enter action (0=Fold, 1=Check, 2=Call, 3=Raise):")))
+        action = Action(int(input("Enter action (0=Fold, 1=Check/Call, 2=Raise):")))
         print("\n")
         
         match action:
             case Action.FOLD:
                 self.handle_fold()
-            case Action.CHECK | Action.CALL:
+            case Action.CHECK_CALL:
                 self.handle_check_call()
             case Action.RAISE:
                 self.raise_select()
