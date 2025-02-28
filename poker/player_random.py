@@ -23,7 +23,7 @@ class PlayerRandom(Player):
                 self.handle_check_call()
             case Action.RAISE:
                 self.handle_raise(self.get_raise_amt(max_raise_amt))
-        
+
         return action
   
     def max_raise_amount(self):
@@ -33,10 +33,18 @@ class PlayerRandom(Player):
         
         pots = self.game.pots
         call_amt_due = 0
+        pot_maxs = []
         for pot in pots:
             pot_max = max(pot.contributions.values())
-            call_amt_due += pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self]
-        
+            pot_maxs.append(pot_max)
+            call_amt_due += (pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self])
+
+        # preflop hack
+        if self.game.current_stage == Stage.PREFLOP and (self.stack-call_amt_due) > 0:
+            sum_max_pots = sum(pot_maxs)
+            if sum_max_pots < self.game.big_amount:
+                call_amt_due += (self.game.big_amount - sum_max_pots)
+
         return self.stack - call_amt_due
     
     

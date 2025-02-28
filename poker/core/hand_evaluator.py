@@ -100,7 +100,7 @@ def _find_best_hand(cards):
     """
     best_rank = 0
     best_tiebreakers = []
-    for five_cards in itertools.combinations(cards, 5):
+    for five_cards in itertools.combinations(cards, min(5, len(cards))):
         rank, tiebreakers = evaluate_hand(list(five_cards))
         if rank > best_rank or (rank == best_rank and tiebreakers > best_tiebreakers):
             best_rank = rank

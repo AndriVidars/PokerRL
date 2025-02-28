@@ -42,8 +42,6 @@ class Player:
         for i, pot in enumerate(self.game.pots):            
             pot_max = max(pot.contributions.values())
             due = pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self]
-            if due not in [pot_max, 0]:
-                print(f"\n{'#'*40}\n{due}{'#'*40}\n")
             # need to handle this, maybe the due is always pot max? since
             if due > self.stack:
                 self.all_in = True
@@ -78,8 +76,9 @@ class Player:
         self.handle_check_call() 
 
         # validate funds
-        assert raise_amt <= self.stack
+        assert raise_amt <= self.stack, f"Raise amount ({raise_amt}) exceeds stack ({self.stack})"
         assert raise_amt >= self.game.min_bet
+        
         self.stack -= raise_amt
         if self.stack == 0:
             self.all_in = True
