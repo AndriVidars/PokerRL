@@ -50,7 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+docs/
+models/
 # Translations
 *.mo
 *.pot
@@ -170,5 +171,13 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-
-logs/
+# Project specific
+test_results/
+*.npz
+poker/parsers/test_pluribus_parser.py
+poker/parsers/example_pluribus_analysis.py
+poker/parsers/pluribus_parser_tutorial.ipynb
+poker/parsers/pluribus_strategy_analysis.ipynb
+poker/pluribus_log_explorer.ipynb
+poker/play_vs_ai.py
+poker/game_state_explorer.ipynb

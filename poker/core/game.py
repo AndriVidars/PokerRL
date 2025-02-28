@@ -220,9 +220,23 @@ class Game:
                 player_hands_rankings[p] = (best_rank, best_tiebreakers)
 
         for pot in self.pots:
+            # Handle empty eligible players list (everyone folded)
             if not pot.eligible_players:
                 continue
+                
+            # Only one player eligible - they win the pot
+            if len(pot.eligible_players) == 1:
+                winner = list(pot.eligible_players)[0]
+                winner.stack += pot.total_amount
+                continue
+                
+            # Multiple players with hands
             pot_players = sorted(list(pot.eligible_players), key=lambda x: player_hands_rankings[x], reverse=True)
+            
+            # Safety check - skip pot if no eligible players have rankings (shouldn't happen)
+            if not pot_players or not all(p in player_hands_rankings for p in pot_players):
+                continue
+                
             tied_players = [pot_players[0]]
             for i in range(1, len(pot_players)):
                 if player_hands_rankings[pot_players[i]] == player_hands_rankings[pot_players[0]]:
@@ -236,8 +250,8 @@ class Game:
             for p in tied_players:
                 p.stack += amount_each
             
-            # hacky since chips are int
-            if remainder > 0:
+            # Give remainder to first player
+            if remainder > 0 and tied_players:
                 tied_players[0].stack += remainder
 
 
