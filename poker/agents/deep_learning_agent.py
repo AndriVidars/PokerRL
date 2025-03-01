@@ -150,6 +150,7 @@ class PokerPlayerNetV1(nn.Module):
                         avg_val_loss = val_loss / len(val_loader)
                         print(f"Validation Loss: {avg_val_loss:.4f}")
                         valid_lossess.append(avg_val_loss)
+            step += 1
 
 
     @staticmethod
