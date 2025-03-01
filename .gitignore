@@ -170,7 +170,25 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-
-logs/
-
-*.pkl
+# Project specific
+test_results/
+*.npz
+poker/parsers/test_pluribus_parser.py
+poker/parsers/example_pluribus_analysis.py
+poker/parsers/pluribus_parser_tutorial.ipynb
+poker/parsers/pluribus_strategy_analysis.ipynb
+poker/pluribus_log_explorer.ipynb
+poker/play_vs_ai.py
+poker/game_state_explorer.ipynb
+train_simple.py 
+train_raise_model.py 
+train_both_models.py 
+train_agent.py 
+test_simple_model.py 
+test_models.py 
+play_with_ai.py
+test_parser.py
+test_history_functions.py
+simple_player_analysis.py
+fixed_analyze_player.py
+fix_logs.py
