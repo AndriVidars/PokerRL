@@ -1,8 +1,7 @@
 from typing import List, Tuple
 from collections import Counter
-from poker.core.card import RANK_ORDER, Card
 from itertools import combinations
-from collections import Counter
+from core.card import RANK_ORDER, Card
 
 def evaluate_hand(cards: List[Card]) -> Tuple[int, List]:
     """ Evaluates a hand for anywhere from 2 to 7 cards.

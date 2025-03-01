@@ -1,4 +1,3 @@
-
 def remap_numbers(lst):
     # Replace all the cells with numbers so that the smallest number becomes 0,
     # the second smallest becomes 1 and so on. For example,  [None, 3, None 1] becomes
