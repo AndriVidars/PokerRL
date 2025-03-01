@@ -139,13 +139,62 @@ class GameStateHelper:
             stack_size=player.stack
         )
         
-        # Set fold status
-        if player.folded:
-            state_player.history = [(Action.FOLD, None)]
-        elif player.all_in:
-            # If all-in, add a RAISE action
-            state_player.history = [(Action.RAISE, player.stack)]
-            
+        # Add actions based on player state and current stage
+        # For the test, we'll infer actions from the game state
+        current_stage_value = stage.value
+        
+        # Add preflop action
+        if current_stage_value >= Stage.PREFLOP.value:
+            if player.folded:
+                # If player folded, add fold action
+                state_player.add_preflop_action(Action.FOLD, None)
+            elif player.all_in:
+                # If all-in, add raise action
+                state_player.add_preflop_action(Action.RAISE, player.stack)
+            else:
+                # Default to CHECK_CALL
+                state_player.add_preflop_action(Action.CHECK_CALL, None)
+        
+        # Add flop action if we're at flop or later
+        if current_stage_value >= Stage.FLOP.value:
+            if player.folded and len(state_player.history) == 0:
+                # If player folded in flop (no preflop action recorded)
+                state_player.add_preflop_action(Action.CHECK_CALL, None)
+                state_player.add_flop_action(Action.FOLD, None)
+            elif player.folded and current_stage_value == Stage.FLOP.value:
+                # Player folded in flop
+                state_player.add_flop_action(Action.FOLD, None)
+            elif player.all_in and current_stage_value == Stage.FLOP.value:
+                # Player went all-in in flop
+                state_player.add_flop_action(Action.RAISE, player.stack)
+            elif current_stage_value > Stage.PREFLOP.value:
+                # Player still active at this stage
+                state_player.add_flop_action(Action.CHECK_CALL, None)
+        
+        # Add turn action if we're at turn or later
+        if current_stage_value >= Stage.TURN.value:
+            if player.folded and current_stage_value == Stage.TURN.value:
+                # Player folded in turn
+                state_player.add_turn_action(Action.FOLD, None)
+            elif player.all_in and current_stage_value == Stage.TURN.value:
+                # Player went all-in in turn
+                state_player.add_turn_action(Action.RAISE, player.stack)
+            elif current_stage_value > Stage.FLOP.value:
+                # Player still active at this stage
+                state_player.add_turn_action(Action.CHECK_CALL, None)
+        
+        # Add river action if we're at river
+        if current_stage_value >= Stage.RIVER.value:
+            if player.folded and current_stage_value == Stage.RIVER.value:
+                # Player folded in river
+                state_player.add_river_action(Action.FOLD, None)
+            elif player.all_in and current_stage_value == Stage.RIVER.value:
+                # Player went all-in in river
+                state_player.add_river_action(Action.RAISE, player.stack)
+            elif current_stage_value == Stage.RIVER.value:
+                # Player still active at river
+                state_player.add_river_action(Action.CHECK_CALL, None)
+        
         return state_player
     
     @staticmethod

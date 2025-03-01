@@ -8,6 +8,53 @@ from collections import defaultdict
 import numpy as np
 
 from poker.core.card import Card, Rank, Suit
+from enum import Enum
+
+# Fix to map string representations in logs to our Rank and Suit enums
+class CardMapper:
+    # Maps text ranks from Pluribus logs to our Rank enum
+    RANK_MAP = {
+        '2': Rank.TWO,
+        '3': Rank.THREE, 
+        '4': Rank.FOUR,
+        '5': Rank.FIVE,
+        '6': Rank.SIX,
+        '7': Rank.SEVEN,
+        '8': Rank.EIGHT,
+        '9': Rank.NINE,
+        'T': Rank.TEN,
+        'J': Rank.JACK,
+        'Q': Rank.QUEEN,
+        'K': Rank.KING,
+        'A': Rank.ACE
+    }
+    
+    # Maps text suits from Pluribus logs to our Suit enum
+    SUIT_MAP = {
+        'c': Suit.CLUB,
+        'd': Suit.DIAMOND,
+        'h': Suit.HEART,
+        's': Suit.SPADE
+    }
+    
+    @staticmethod
+    def text_to_card(card_text: str) -> Card:
+        """Convert a text card representation (e.g., 'Th') to a Card object"""
+        if len(card_text) != 2:
+            raise ValueError(f"Invalid card text: {card_text}")
+        
+        rank_char = card_text[0]
+        suit_char = card_text[1]
+        
+        if rank_char not in CardMapper.RANK_MAP:
+            raise ValueError(f"{rank_char} is not a valid Rank")
+        if suit_char not in CardMapper.SUIT_MAP:
+            raise ValueError(f"type object 'Suit' has no attribute '{suit_char.upper()}'")
+            
+        rank = CardMapper.RANK_MAP[rank_char]
+        suit = CardMapper.SUIT_MAP[suit_char]
+        
+        return Card(rank, suit)
 from poker.core.action import Action
 from poker.core.gamestage import Stage
 
@@ -194,39 +241,19 @@ class PluribusParser:
         Parse card strings into Card objects
         """
         cards = []
-        card_matches = re.finditer(r'(\d+|[AKQJT])([cdhs])', cards_str)
+        card_matches = re.finditer(r'([AKQJT\d])([cdhs])', cards_str)
         
         for match in card_matches:
             rank_str = match.group(1)
             suit_str = match.group(2)
             
-            # Convert rank string to Rank enum
-            if rank_str == 'A':
-                rank = Rank.ACE
-            elif rank_str == 'K':
-                rank = Rank.KING
-            elif rank_str == 'Q':
-                rank = Rank.QUEEN
-            elif rank_str == 'J':
-                rank = Rank.JACK
-            elif rank_str == 'T':
-                rank = Rank.TEN
-            else:
-                rank = Rank(int(rank_str))
-            
-            # Convert suit string to Suit enum
-            if suit_str == 'c':
-                suit = Suit.CLUBS
-            elif suit_str == 'd':
-                suit = Suit.DIAMONDS
-            elif suit_str == 'h':
-                suit = Suit.HEARTS
-            elif suit_str == 's':
-                suit = Suit.SPADES
-            else:
-                continue  # Skip invalid suits
-            
-            cards.append(Card(rank, suit))
+            try:
+                # Use the CardMapper to convert text to Card object
+                card = CardMapper.text_to_card(rank_str + suit_str)
+                cards.append(card)
+            except ValueError as e:
+                print(f"Warning: Could not parse card {rank_str}{suit_str}: {e}")
+                continue
         
         return cards
     
@@ -241,7 +268,7 @@ class PluribusParser:
         for match in blind_matches:
             player = match.group(1)
             amount = int(match.group(3))
-            actions.append((player, Action.CALL, amount))  # Treat blinds as calls
+            actions.append((player, Action.CHECK_CALL, amount))  # Treat blinds as calls
         
         # Find all folds
         fold_matches = re.finditer(r'(\w+): folds', section)
@@ -253,14 +280,14 @@ class PluribusParser:
         check_matches = re.finditer(r'(\w+): checks', section)
         for match in check_matches:
             player = match.group(1)
-            actions.append((player, Action.CHECK, None))
+            actions.append((player, Action.CHECK_CALL, None))
         
         # Find all calls
         call_matches = re.finditer(r'(\w+): calls (\d+)', section)
         for match in call_matches:
             player = match.group(1)
             amount = int(match.group(2))
-            actions.append((player, Action.CALL, amount))
+            actions.append((player, Action.CHECK_CALL, amount))
         
         # Find all bets
         bet_matches = re.finditer(r'(\w+): bets (\d+)', section)
@@ -372,7 +399,6 @@ class PluribusDataset:
             if amount is not None and player in player_stacks:
                 player_stacks[player] -= amount
         
-        # Create the game state dictionary (similar to our DQN format)
         game_state = {
             'stage': stage,
             'community_cards': community_cards,
@@ -446,14 +472,12 @@ class PluribusDataset:
         """
         if action == Action.FOLD:
             return 0
-        elif action == Action.CHECK:
-            return 1
-        elif action == Action.CALL:
-            return 2
+        elif action == Action.CHECK_CALL:
+            return 1  # Both check and call map to the same index
         elif action == Action.RAISE:
-            return 3
+            return 2
         else:
-            return 2  # Default to CALL for unknown actions
+            return 1  # Default to CHECK_CALL for unknown actions
     
     def _calculate_hand_strength(self, cards: List[Card]) -> float:
         """

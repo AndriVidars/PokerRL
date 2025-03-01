@@ -188,3 +188,8 @@ train_agent.py
 test_simple_model.py 
 test_models.py 
 play_with_ai.py
+test_parser.py
+test_history_functions.py
+simple_player_analysis.py
+fixed_analyze_player.py
+fix_logs.py
