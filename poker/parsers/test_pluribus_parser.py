@@ -8,16 +8,16 @@ from typing import List, Dict, Tuple, Optional, Set, Any
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from poker.parsers.pluribus_parser import PluribusParser, HandHistory, PluribusDataset, Action as ParserAction
-from poker.core.deck import Deck
-from poker.core.player import Player
-from poker.core.game import Game
-from poker.core.card import Card
-from poker.core.gamestage import Stage
-from poker.agents.game_state import GameState, Player as StatePlayer
+from Poker.parsers.pluribus_parser import PluribusParser, HandHistory, PluribusDataset, Action as ParserAction
+from Poker.core.deck import Deck
+from Poker.core.player import Player
+from Poker.core.game import Game
+from Poker.core.card import Card
+from Poker.core.gamestage import Stage
+from Poker.agents.game_state import GameState, Player as StatePlayer
 
 # Use the Action enum from parsers for parsing
-from poker.core.action import Action as CoreAction
+from Poker.core.action import Action as CoreAction
 
 class PluribusParserTester:
     """
@@ -253,7 +253,7 @@ class PluribusParserTester:
                     )
                 )
         
-        # Create GameState
+        # Create GameState with visibility rules enabled
         game_state = GameState(
             stage=stage,
             community_cards=community_cards,
@@ -261,7 +261,8 @@ class PluribusParserTester:
             min_bet_to_continue=min_bet_to_continue,
             my_player=my_player,
             other_players=other_players,
-            my_player_action=None  # Will be filled later
+            my_player_action=None,  # Will be filled later
+            apply_visibility_rules=True  # Apply visibility rules based on player position and stage
         )
         
         return game_state
@@ -279,10 +280,21 @@ class PluribusParserTester:
             if p == player_name and amount is not None:
                 remaining_stack -= amount
         
-        # Create state player
+        # Get the big blind position
+        # In Pluribus logs, seat numbering typically starts at 0 or 1
+        # Assuming the big blind is in seat 2 (which is common in 6-max games)
+        big_blind_seat = 2
+        
+        # Calculate spots left of big blind (0 to n-1)
+        # 0 means player is the big blind
+        # 1 means player is one spot to the left of big blind, etc.
+        num_players = len(history.seats)
+        spots_left_bb = (seat - big_blind_seat) % num_players
+        
+        # Create state player with correct position
         cards_list = history.player_hole_cards.get(player_name, [])
         player = StatePlayer(
-            spots_left_bb=seat,  # Using seat as position
+            spots_left_bb=spots_left_bb,  # Correctly calculated spots left of BB
             cards=cards_list,  # Pass the cards directly
             stack_size=remaining_stack
         )

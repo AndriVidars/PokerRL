@@ -1,11 +1,11 @@
 from typing import List
-from poker.core.deck import Deck
-from poker.core.card import Card
-from poker.core.player import Player
-from poker.core.pot import Pot
-from poker.core.gamestage import Stage
-from poker.core.action import Action
-import poker.core.hand_evaluator as hand_eval
+from Poker.core.deck import Deck
+from Poker.core.card import Card
+from Poker.core.player import Player
+from Poker.core.pot import Pot
+from Poker.core.gamestage import Stage
+from Poker.core.action import Action
+import Poker.core.hand_evaluator as hand_eval
 from typing import Optional, List, Set
 
 

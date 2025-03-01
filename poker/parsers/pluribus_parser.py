@@ -7,7 +7,7 @@ from typing import List, Dict, Tuple, Optional, Set
 from collections import defaultdict
 import numpy as np
 
-from poker.core.card import Card, Rank, Suit
+from Poker.core.card import Card, Rank, Suit
 from enum import Enum
 
 # Fix to map string representations in logs to our Rank and Suit enums
@@ -55,8 +55,8 @@ class CardMapper:
         suit = CardMapper.SUIT_MAP[suit_char]
         
         return Card(rank, suit)
-from poker.core.action import Action
-from poker.core.gamestage import Stage
+from Poker.core.action import Action
+from Poker.core.gamestage import Stage
 
 class HandHistory:
     """
@@ -487,7 +487,7 @@ class PluribusDataset:
         if len(cards) < 2:
             return 0.0
             
-        from poker.core.hand_evaluator import evaluate_hand
+        from Poker.core.hand_evaluator import evaluate_hand
         
         try:
             if len(cards) <= 5:

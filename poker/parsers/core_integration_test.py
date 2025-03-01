@@ -8,15 +8,15 @@ import numpy as np
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import core components
-from poker.core.card import Card, Rank, Suit
-from poker.core.action import Action
-from poker.core.gamestage import Stage
-from poker.core.deck import Deck
-from poker.core.player import Player
-from poker.core.game import Game
+from Poker.core.card import Card, Rank, Suit
+from Poker.core.action import Action
+from Poker.core.gamestage import Stage
+from Poker.core.deck import Deck
+from Poker.core.player import Player
+from Poker.core.game import Game
 
 # Import parser components 
-from poker.parsers.pluribus_parser import PluribusParser, HandHistory
+from Poker.parsers.pluribus_parser import PluribusParser, HandHistory
 
 def test_core_integration():
     """

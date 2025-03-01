@@ -1,15 +1,15 @@
 import sys
 from typing import Dict, List, Tuple
 
-from poker.core.game import Game
-from poker.core.player import Player
-from poker.core.action import Action
-from poker.core.card import Card, Rank, Suit
-from poker.core.gamestage import Stage
-from poker.core.deck import Deck
-from poker.core.pot import Pot
-from poker.agents.game_state import GameState
-from poker.game_state_helper import GameStateHelper
+from Poker.core.game import Game
+from Poker.core.player import Player
+from Poker.core.action import Action
+from Poker.core.card import Card, Rank, Suit
+from Poker.core.gamestage import Stage
+from Poker.core.deck import Deck
+from Poker.core.pot import Pot
+from Poker.agents.game_state import GameState
+from Poker.game_state_helper import GameStateHelper
 
 class TestPlayer(Player):
     """Simple player that follows a predefined strategy for testing"""

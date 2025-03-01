@@ -7,14 +7,14 @@ from typing import List, Dict, Tuple, Optional
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from poker.core.game import Game
-from poker.core.player import Player
-from poker.core.action import Action
-from poker.core.card import Card, Rank, Suit
-from poker.core.gamestage import Stage
-from poker.core.deck import Deck
-from poker.player_random import PlayerRandom
-from poker.agents.imitation_agent import ImitationAgent, DeepLearningPlayer
+from Poker.core.game import Game
+from Poker.core.player import Player
+from Poker.core.action import Action
+from Poker.core.card import Card, Rank, Suit
+from Poker.core.gamestage import Stage
+from Poker.core.deck import Deck
+from Poker.player_random import PlayerRandom
+from Poker.agents.imitation_agent import ImitationAgent, DeepLearningPlayer
 
 
 def colored_card(card: Card) -> str:
@@ -84,7 +84,7 @@ def determine_winners(game: Game) -> List[Tuple[Player, int]]:
     Determine the winners of the hand
     Returns a list of (player, pot_idx) tuples
     """
-    from poker.core.hand_evaluator import evaluate_hand
+    from Poker.core.hand_evaluator import evaluate_hand
     
     # Skip if there's only one active player
     active_players = [p for p in game.players if not p.folded]
@@ -160,7 +160,7 @@ def award_pot(game: Game, winners: List[Tuple[Player, int]]) -> None:
             
             # Show hand strength if we have multiple winners
             if len(players) > 1 and hasattr(player, 'hand') and player.hand:
-                from poker.core.hand_evaluator import evaluate_hand
+                from Poker.core.hand_evaluator import evaluate_hand
                 hand_rank, _ = evaluate_hand(game.community_cards + player.hand)
                 hand_names = {
                     9: "Straight Flush",

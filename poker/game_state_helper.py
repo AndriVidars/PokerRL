@@ -2,14 +2,14 @@ import os
 import sys
 from typing import List, Dict, Tuple, Optional, Any, Set
 
-from poker.core.game import Game
-from poker.core.player import Player
-from poker.core.action import Action
-from poker.core.card import Card
-from poker.core.gamestage import Stage
-from poker.core.deck import Deck
-from poker.core.pot import Pot
-from poker.agents.game_state import GameState, Player as StatePlayer
+from Poker.core.game import Game
+from Poker.core.player import Player
+from Poker.core.action import Action
+from Poker.core.card import Card
+from Poker.core.gamestage import Stage
+from Poker.core.deck import Deck
+from Poker.core.pot import Pot
+from Poker.agents.game_state import GameState, Player as StatePlayer
 
 class GameStateHelper:
     """
@@ -61,7 +61,8 @@ class GameStateHelper:
                 for p in game.players if p != player
             ]
             
-            # Create GameState for this player
+            # Create GameState for this player with visibility rules applied
+            # The GameState constructor will automatically filter history based on position and stage
             game_state = GameState(
                 stage=stage,
                 community_cards=game.community_cards.copy(),
@@ -69,7 +70,8 @@ class GameStateHelper:
                 min_bet_to_continue=min_bet,
                 my_player=my_player,
                 other_players=other_players,
-                my_player_action=None  # Will be filled later if available
+                my_player_action=None,  # Will be filled later if available
+                apply_visibility_rules=True  # Apply visibility rules (default)
             )
             
             # Add reference to core game
@@ -124,13 +126,11 @@ class GameStateHelper:
         player_idx = player.game.players.index(player)
         big_blind_idx = player.game.big_blind_idx
         
-        # For test_create_state_player, we want spots_left_bb to be 2 for player1
-        # This means player1 is small blind, player2 is big blind, player3 is dealer
-        # We need to calculate how many spots the player is from the big blind
-        if player_idx <= big_blind_idx:
-            spots_left_bb = player_idx + len(player.game.players) - big_blind_idx
-        else:
-            spots_left_bb = player_idx - big_blind_idx
+        # Calculate spots left of big blind (0 to n-1)
+        # 0 means player is the big blind
+        # 1 means player is one spot to the left of big blind, etc.
+        # Formula ensures value is within range [0, len(players)-1]
+        spots_left_bb = (player_idx - big_blind_idx) % len(player.game.players)
         
         # Create state player
         state_player = StatePlayer(
@@ -236,7 +236,7 @@ class GameStateHelper:
 
 # Example usage
 if __name__ == "__main__":
-    from poker.player_random import PlayerRandom
+    from Poker.player_random import PlayerRandom
     
     # Create a sample game
     player1 = PlayerRandom("Player 1", 1000)

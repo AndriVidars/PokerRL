@@ -1,9 +1,9 @@
-from poker.core.card import Card
-from poker.core.gamestage import Stage
-from poker.core.action import Action
-from poker.core.hand_evaluator import evaluate_hand
+from Poker.core.card import Card
+from Poker.core.gamestage import Stage
+from Poker.core.action import Action
+from Poker.core.hand_evaluator import evaluate_hand
 from typing import List, Tuple
-from poker.agents.util import remap_numbers
+from Poker.agents.util import remap_numbers
 
 class Player():
     """
@@ -45,6 +45,42 @@ class Player():
             return (self.spots_left_bb - 1) % ttl_players
         return (self.spots_left_bb + 1) % ttl_players
     
+    def get_visible_history(self, current_stage: Stage) -> List[Tuple[Action, int]]:
+        """
+        Returns visible history based on the current stage.
+        Player can only see their own history up to the previous stage.
+        """
+        # If we're at the preflop, no history is visible
+        if current_stage == Stage.PREFLOP:
+            return []
+        
+        # Otherwise, return history up to the current stage (excluding current stage)
+        return self.history[:current_stage.value]
+    
+    def get_visible_history_at_stage(self, stage: Stage, my_turn: int, their_turn: int) -> List[Tuple[Action, int]]:
+        """
+        Returns visible history at a specific stage based on turns.
+        Players can only see other players' actions if those players have already acted in the current stage.
+        
+        Args:
+            stage: The game stage
+            my_turn: The current player's turn (0-indexed)
+            their_turn: The other player's turn (0-indexed)
+            
+        Returns:
+            Filtered history list
+        """
+        # Previous stages are always visible
+        if stage.value > len(self.history):
+            return self.history
+            
+        # For current stage, only show if they've already acted (their turn < my turn)
+        if their_turn < my_turn:
+            return self.history
+        
+        # Otherwise, only show history up to the previous stage
+        return self.history[:stage.value - 1] if stage.value > 0 else []
+    
     @property
     def in_game(self):
         return not any([action == Action.FOLD for action, _ in self.history])
@@ -63,16 +99,95 @@ class GameState():
             other_players: List[Player],
             # action the player took in practice
             my_player_action: Tuple[Action, int] | None,
-            core_game = None
+            core_game = None,
+            apply_visibility_rules: bool = True
     ):
         self.community_cards = community_cards
         self.pot_size = pot_size
         self.min_bet_to_continue = min_bet_to_continue
         self.stage = stage
-        self.my_player = my_player
-        self.other_players = other_players
+        
+        # Store the original player objects
+        self._original_my_player = my_player
+        self._original_other_players = other_players
+        
+        # Apply visibility rules by default
+        if apply_visibility_rules:
+            # My player only sees their history up to previous stage (not current)
+            visible_my_player = self._apply_my_player_visibility(my_player)
+            # Other players' history is visible based on turn order
+            visible_other_players = self._apply_other_players_visibility(my_player, other_players)
+            
+            self.my_player = visible_my_player
+            self.other_players = visible_other_players
+        else:
+            # Use original players without filtering history
+            self.my_player = my_player
+            self.other_players = other_players
+            
         self.my_player_action = my_player_action
         self.core_game = core_game
+        
+    def _apply_my_player_visibility(self, my_player: Player) -> Player:
+        """Filters my_player's history based on visibility rules"""
+        # Create a copy of the player object
+        filtered_player = Player(
+            spots_left_bb=my_player.spots_left_bb,
+            cards=my_player.cards,
+            stack_size=my_player.stack_size
+        )
+        
+        # Add only the visible part of history (up to previous stage)
+        visible_history = my_player.get_visible_history(self.stage)
+        
+        # Rebuild history in the new player object
+        for i, (action, amount) in enumerate(visible_history):
+            if i == 0:
+                filtered_player.add_preflop_action(action, amount)
+            elif i == 1:
+                filtered_player.add_flop_action(action, amount)
+            elif i == 2:
+                filtered_player.add_turn_action(action, amount)
+            elif i == 3:
+                filtered_player.add_river_action(action, amount)
+                
+        return filtered_player
+        
+    def _apply_other_players_visibility(self, my_player: Player, other_players: List[Player]) -> List[Player]:
+        """Filters other players' history based on turn order and visibility rules"""
+        filtered_players = []
+        
+        # Get effective turns
+        total_players = 1 + len(other_players)
+        my_turn = my_player.turn_to_play(self.stage, total_players)
+        
+        for other_player in other_players:
+            other_turn = other_player.turn_to_play(self.stage, total_players)
+            
+            # Create a copy of the player object
+            filtered_player = Player(
+                spots_left_bb=other_player.spots_left_bb,
+                cards=other_player.cards,
+                stack_size=other_player.stack_size
+            )
+            
+            # Get visible history based on turns
+            visible_history = other_player.get_visible_history_at_stage(self.stage, my_turn, other_turn)
+            
+            # Rebuild history in the new player object
+            for i, (action, amount) in enumerate(visible_history):
+                if i == 0:
+                    filtered_player.add_preflop_action(action, amount)
+                elif i == 1:
+                    filtered_player.add_flop_action(action, amount)
+                elif i == 2:
+                    filtered_player.add_turn_action(action, amount)
+                elif i == 3:
+                    filtered_player.add_river_action(action, amount)
+                    
+            filtered_players.append(filtered_player)
+            
+        return filtered_players
 
     @staticmethod
     def compute_hand_strength(cards: List[Card]):

@@ -1,5 +1,5 @@
 import random
-from poker.core.card import Card, Suit, Rank
+from Poker.core.card import Card, Suit, Rank
 
 class Deck:
     def __init__(self):

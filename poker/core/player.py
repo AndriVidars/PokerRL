@@ -1,7 +1,7 @@
-from poker.core.card import Card
-from poker.core.action import Action
-from poker.core.gamestage import Stage
-from poker.core.pot import Pot
+from Poker.core.card import Card
+from Poker.core.action import Action
+from Poker.core.gamestage import Stage
+from Poker.core.pot import Pot
 from typing import List
 from abc import abstractmethod
 

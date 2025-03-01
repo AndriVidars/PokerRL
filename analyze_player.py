@@ -5,9 +5,9 @@ from typing import List, Dict, Tuple, Optional, Any
 # Add project root to path if needed
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from poker.parsers.game_state_retriever import GameStateRetriever
-from poker.core.gamestage import Stage
-from poker.core.action import Action
+from Poker.parsers.game_state_retriever import GameStateRetriever
+from Poker.core.gamestage import Stage
+from Poker.core.action import Action
 
 def main():
     # Initialize the game state retriever with the logs directory

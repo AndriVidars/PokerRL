@@ -5,13 +5,13 @@ from typing import List, Dict, Tuple, Optional, Any
 # Add project root to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from poker.parsers.pluribus_parser import PluribusParser, Action as ParserAction
-from poker.core.deck import Deck
-from poker.core.player import Player
-from poker.core.game import Game
-from poker.core.gamestage import Stage
-from poker.agents.game_state import GameState
-from poker.parsers.test_pluribus_parser import PluribusParserTester
+from Poker.parsers.pluribus_parser import PluribusParser, Action as ParserAction
+from Poker.core.deck import Deck
+from Poker.core.player import Player
+from Poker.core.game import Game
+from Poker.core.gamestage import Stage
+from Poker.agents.game_state import GameState
+from Poker.parsers.test_pluribus_parser import PluribusParserTester
 
 class GameStateRetriever:
     """
@@ -117,9 +117,28 @@ class GameStateRetriever:
         
         # Extract the game states from the decisions
         for _, stage, game_state, action, amount in player_decisions:
-            # Set the action that was taken
-            game_state.my_player_action = (action, amount)
-            game_states.append(game_state)
+            # Store a reference to the original player objects if they exist
+            # This is needed since we'll be setting my_player_action, but want to
+            # preserve visibility restrictions
+            if hasattr(game_state, '_original_my_player'):
+                # Store the action in the internal representation (original player object)
+                # Create a new game state with proper visibility rules
+                new_game_state = GameState(
+                    stage=game_state.stage,
+                    community_cards=game_state.community_cards,
+                    pot_size=game_state.pot_size,
+                    min_bet_to_continue=game_state.min_bet_to_continue,
+                    my_player=game_state._original_my_player,
+                    other_players=game_state._original_other_players,
+                    my_player_action=(action, amount),
+                    core_game=game_state.core_game,
+                    apply_visibility_rules=True
+                )
+                game_states.append(new_game_state)
+            else:
+                # Fallback to the old method if _original_my_player isn't available
+                game_state.my_player_action = (action, amount)
+                game_states.append(game_state)
         
         return game_states
     
@@ -163,12 +182,27 @@ class GameStateRetriever:
             # Initialize list for this hand if needed
             if hand_key not in hand_game_states:
                 hand_game_states[hand_key] = []
-                
-            # Set the action that was taken
-            game_state.my_player_action = (action, amount)
             
-            # Add to list for this hand
-            hand_game_states[hand_key].append((stage.value, game_state))
+            # Create a new game state with the action set while preserving visibility rules
+            if hasattr(game_state, '_original_my_player'):
+                # Create a new game state with proper visibility rules
+                new_game_state = GameState(
+                    stage=game_state.stage,
+                    community_cards=game_state.community_cards,
+                    pot_size=game_state.pot_size,
+                    min_bet_to_continue=game_state.min_bet_to_continue,
+                    my_player=game_state._original_my_player,
+                    other_players=game_state._original_other_players,
+                    my_player_action=(action, amount),
+                    core_game=game_state.core_game,
+                    apply_visibility_rules=True
+                )
+                # Add to list for this hand
+                hand_game_states[hand_key].append((stage.value, new_game_state))
+            else:
+                # Fallback to the old method
+                game_state.my_player_action = (action, amount)
+                hand_game_states[hand_key].append((stage.value, game_state))
         
         # Sort each hand's game states by stage and convert to list of lists
         result = []
