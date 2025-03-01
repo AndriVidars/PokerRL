@@ -86,4 +86,22 @@ class Player:
         pot = Pot()
         pot.add_contribution(self, raise_amt)
         self.game.pots.append(pot)
+
+
+    def get_call_amt_due(self):
+        pots = self.game.pots
+        call_amt_due = 0
+        pot_maxs = []
+        for pot in pots:
+            pot_max = max(pot.contributions.values())
+            pot_maxs.append(pot_max)
+            call_amt_due += (pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self])
+
+        # preflop hack
+        if self.game.current_stage == Stage.PREFLOP and (self.stack-call_amt_due) > 0:
+            sum_max_pots = sum(pot_maxs)
+            if sum_max_pots < self.game.big_amount:
+                call_amt_due += (self.game.big_amount - sum_max_pots)
+
+        return call_amt_due
             

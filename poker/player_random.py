@@ -2,7 +2,6 @@ from poker.core.player import Player
 from poker.core.action import Action
 from poker.core.gamestage import Stage
 import numpy as np
-
 import random
 
 class PlayerRandom(Player):
@@ -12,8 +11,8 @@ class PlayerRandom(Player):
         if max_raise_amt < self.game.min_bet:
             actions.pop() # cannot raise
         
-        if self.game.current_stage != Stage.PREFLOP and not self.game.raise_in_round:
-            actions.pop(0) # never fold in this scenario
+        if self.get_call_amt_due() == 0:
+            actions.pop(0)
         
         action = random.choice(actions)
         match action:
@@ -31,21 +30,7 @@ class PlayerRandom(Player):
         if self.all_in:
             return 0
         
-        pots = self.game.pots
-        call_amt_due = 0
-        pot_maxs = []
-        for pot in pots:
-            pot_max = max(pot.contributions.values())
-            pot_maxs.append(pot_max)
-            call_amt_due += (pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self])
-
-        # preflop hack
-        if self.game.current_stage == Stage.PREFLOP and (self.stack-call_amt_due) > 0:
-            sum_max_pots = sum(pot_maxs)
-            if sum_max_pots < self.game.big_amount:
-                call_amt_due += (self.game.big_amount - sum_max_pots)
-
-        return self.stack - call_amt_due
+        return self.stack - self.get_call_amt_due()
     
     
     def get_raise_amt(self, max_raise_amount):

@@ -1,7 +1,8 @@
 from typing import List, Tuple
 from collections import Counter
 from poker.core.card import RANK_ORDER, Card
-import itertools
+from itertools import combinations
+from collections import Counter
 
 def evaluate_hand(cards: List[Card]) -> Tuple[int, List]:
     """ Evaluates a hand for anywhere from 2 to 7 cards.
@@ -95,15 +96,31 @@ def is_straight(ranks):
     
     return False
 
-def _find_best_hand(cards):
+def _find_best_hand(cards:List[Card]):
     """ Gets the best 5 card hand when more than 5 cards are given.
     """
     best_rank = 0
     best_tiebreakers = []
-    for five_cards in itertools.combinations(cards, min(5, len(cards))):
-        rank, tiebreakers = evaluate_hand(list(five_cards))
+    for hand in combinations(cards, min(5, len(cards))):
+        rank, tiebreakers = evaluate_hand(list(hand))
         if rank > best_rank or (rank == best_rank and tiebreakers > best_tiebreakers):
             best_rank = rank
             best_tiebreakers = tiebreakers
     
     return (best_rank, best_tiebreakers)
+
+def suit_counter(cards:List[Card]):
+    possible_hands = combinations(cards, min(5, len(cards)))
+    suit_combs = [[card.suit for card in hand] for hand in possible_hands]
+    max_suit_count = max(max(Counter(hand).values()) for hand in suit_combs)
+    return max_suit_count
+
+def high_card(cards:List[Card]):
+    return max(RANK_ORDER[c.rank] for c in cards)
+
+def high_pair(cards:List[Card]):
+    c = Counter([RANK_ORDER[c.rank] for c in cards])
+    pairs = [k for k,v in c.items() if v == 2]
+    if pairs:
+        return max(pairs)
+    return 0

@@ -7,11 +7,10 @@ from poker.core.gamestage import Stage
 from poker.core.action import Action
 import poker.core.hand_evaluator as hand_eval
 from typing import Optional, List, Set
-from itertools import combinations
 
 
 class Game:
-    def __init__(self, players: List[Player], big_amount: int, small_amount: int):
+    def __init__(self, players: List[Player], big_amount: int, small_amount: int, verbose=True):
         self.players = players
         self.big_amount = big_amount
         self.small_amount = small_amount
@@ -26,9 +25,8 @@ class Game:
         self.active_players:Optional[Set[Player]] = set(self.players) # active players in each round - not all in or folded
 
         self.game_completed = False
-        self.raise_in_round = False
         self.rounds_played = 0
-        self.verbose = True
+        self.verbose = verbose
 
         for player in self.players:
             player.game = self
@@ -50,8 +48,6 @@ class Game:
     
     def gameplay_loop(self):
         while True:
-            self.raise_in_round = False
-
             if self.auto_pot():
                 self.decide_pot()
                 self.move_blinds()
@@ -73,7 +69,7 @@ class Game:
                 self.game_completed = True
                 if self.verbose:
                     print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
-                return
+                return (self.players[0], self.rounds_played, self.players_eliminated)
 
     def next_player(self, curr_player_idx: int):
         next_idx = (curr_player_idx + 1) % len(self.players)
@@ -104,13 +100,16 @@ class Game:
                 if curr_player.all_in:
                     print(f"Player: {curr_player} is now ALL IN")
 
-        
-            if init_player_idx == -1 and action != Action.FOLD:
+            if action == Action.RAISE:
+                if not curr_player.all_in:
+                    init_player_idx = curr_player_idx
+                else:
+                    init_player_idx = -1 # reset
+            
+            # dont think the all_in check is necessary - but keeping it for safety
+            elif not curr_player.all_in and action == Action.CHECK_CALL and init_player_idx == -1:
                 init_player_idx = curr_player_idx
             
-            if action == Action.RAISE:
-                self.raise_in_round = True
-                init_player_idx = curr_player_idx
             
             if curr_player.all_in or curr_player.folded:
                 self.active_players.remove(curr_player)
