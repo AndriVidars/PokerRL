@@ -191,4 +191,5 @@ test_parser.py
 test_history_functions.py
 simple_player_analysis.py
 fixed_analyze_player.py
-fix_logs.py
+docs/
+models/
