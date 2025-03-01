@@ -15,21 +15,22 @@ class GameStateTensorDataset(Dataset):
 def collate_fn(batch):
     return tuple(torch.stack(tensors) for tensors in zip(*batch))
 class FFN(nn.Module):
-    def __init__(self, idim, hdim, odim, n_hidden):
+    def __init__(self, idim, hdim, odim, n_hidden, use_batchnorm=False):
         super().__init__()
-        self.net = nn.ModuleList(
-            [nn.BatchNorm1d(idim),
-            nn.Linear(idim, hdim),
-            *[
-                nn.BatchNorm1d(hdim),
-                nn.ReLU(),
-                nn.Linear(hdim, hdim)
-            ],
-            nn.BatchNorm1d(hdim),
-            nn.ReLU(),
-            nn.Linear(hdim, odim)]
-        )
-
+        self.net = []
+        
+        if use_batchnorm: self.net.append(nn.BatchNorm1d(idim))
+        self.net.append(nn.Linear(idim, hdim))
+        for _ in range(n_hidden):
+            if use_batchnorm: self.net.append(nn.BatchNorm1d(hdim))
+            self.net.append(nn.ReLU())
+            self.net.append(nn.Linear(hdim, hdim))
+        if use_batchnorm: self.net.append(nn.BatchNorm1d(hdim))
+        self.net.append(nn.ReLU())
+        self.net.append(nn.Linear(hdim, odim))
+        
+        self.net = nn.ModuleList(self.net)
+        
     def forward(self, x):
         assert len(x.shape) == 2 or len(x.shape) == 3
         if len(x.shape) == 2:
@@ -43,7 +44,7 @@ class FFN(nn.Module):
         return x
 
 class PokerPlayerNetV1(nn.Module):
-    def __init__(self):
+    def __init__(self, use_batchnorm=False):
         super().__init__()
 
         self.player_game_net = FFN(
@@ -51,6 +52,7 @@ class PokerPlayerNetV1(nn.Module):
             hdim=10,
             odim=10,
             n_hidden=2,
+            use_batchnorm=use_batchnorm,
         )
         # consider only players that are in the game
         self.acted_player_history_net = FFN(
@@ -58,12 +60,14 @@ class PokerPlayerNetV1(nn.Module):
             hdim=20,
             odim=20,
             n_hidden=3,
+            use_batchnorm=use_batchnorm,
         )
         self.to_act_player_history_net = FFN(
             idim=3, # stack_size, turn_to_act, bet
             hdim=20,
             odim=20,
             n_hidden=3,
+            use_batchnorm=use_batchnorm,
         )
 
         self.gather_net = FFN(
@@ -71,6 +75,7 @@ class PokerPlayerNetV1(nn.Module):
             hdim=30,
             odim=2, # (fold / no_fold), raise size
             n_hidden=3,
+            use_batchnorm=use_batchnorm,
         )
 
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
@@ -92,10 +97,7 @@ class PokerPlayerNetV1(nn.Module):
 
         out = self.gather_net(all_game_state)
         fold_logits = out[:, 0]
-        raise_size = torch.sigmoid(out[:, 1])
-
-        # if raise size <= 10%, just call
-        raise_size = raise_size.clamp_min(0.1) * (raise_size >= 0.1).float()
+        raise_size = out[:, 1]
 
         return torch.sigmoid(fold_logits), raise_size
 
@@ -199,7 +201,9 @@ class PokerPlayerNetV1(nn.Module):
         pad = torch.zeros(desired_shape[0]-x_to_act_players.shape[0], desired_shape[1])
         x_to_act_players = torch.concat((x_to_act_players, pad) , dim=0)
 
-        player_action = torch.Tensor([float(state.my_player_action[0] == Action.FOLD), state.my_player_action[1]])
+        raise_size = state.my_player_action[1]
+        raise_size = 0 if raise_size is None else raise_size / state.pot_size
+        player_action = torch.Tensor([float(state.my_player_action[0] == Action.FOLD), raise_size])
         return x_player_game, x_acted_players, x_to_act_players, player_action
 
     @staticmethod
