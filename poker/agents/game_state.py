@@ -83,16 +83,14 @@ class GameState():
         if len(tbs) > 1: strength += tbs[1]
         return strength
 
-    @property
-    def hand_strength(self):
+    def get_hand_strength(self):
         """ Returns the hand strength of the hand with respect to all possible hands.
         """
         if self.my_player.cards is None:
             return 0  # Return 0 strength if we don't have cards
-        return self.compute_hand_strength([self.my_player.cards] + self.community_cards)
+        return self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
 
-    @property
-    def community_hand_strength(self):
+    def get_community_hand_strength(self):
         """ Returns the hand strength of the community hand with respect to all possible hands.
         """
         if len(self.community_cards) == 0: return 0
