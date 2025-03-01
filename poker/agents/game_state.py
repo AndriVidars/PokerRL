@@ -1,9 +1,9 @@
-from core.card import Card
-from core.gamestage import Stage
-from core.action import Action
-from core.hand_evaluator import evaluate_hand
+from poker.core.card import Card
+from poker.core.gamestage import Stage
+from poker.core.action import Action
+from poker.core.hand_evaluator import evaluate_hand
 from typing import List, Tuple
-from agents.util import remap_numbers
+from poker.agents.util import remap_numbers
 
 class Player():
     """
@@ -63,6 +63,7 @@ class GameState():
             other_players: List[Player],
             # action the player took in practice
             my_player_action: Tuple[Action, int] | None,
+            core_game = None
     ):
         self.community_cards = community_cards
         self.pot_size = pot_size
@@ -71,6 +72,7 @@ class GameState():
         self.my_player = my_player
         self.other_players = other_players
         self.my_player_action = my_player_action
+        self.core_game = core_game
 
     @staticmethod
     def compute_hand_strength(cards: List[Card]):
@@ -85,10 +87,12 @@ class GameState():
     def hand_strength(self):
         """ Returns the hand strength of the hand with respect to all possible hands.
         """
-        return self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
+        if self.my_player.cards is None:
+            return 0  # Return 0 strength if we don't have cards
+        return self.compute_hand_strength([self.my_player.cards] + self.community_cards)
 
     @property
-    def community_hand_strenght(self):
+    def community_hand_strength(self):
         """ Returns the hand strength of the community hand with respect to all possible hands.
         """
         if len(self.community_cards) == 0: return 0

@@ -50,7 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+docs/
+models/
 # Translations
 *.mo
 *.pot
@@ -190,5 +191,4 @@ test_parser.py
 test_history_functions.py
 simple_player_analysis.py
 fixed_analyze_player.py
-docs/
-models/
+fix_logs.py
