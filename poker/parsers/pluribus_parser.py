@@ -28,6 +28,7 @@ class HandHistory:
         self.turn_actions: List[Tuple[str, Action, Optional[int]]] = []
         self.river_card: Optional[Card] = None
         self.river_actions: List[Tuple[str, Action, Optional[int]]] = []
+        self.game = None  # For integration with core Game class
         self.showdown: Dict[str, List[Card]] = {}  # {player: [cards]}
         self.winners: List[Tuple[str, int]] = []  # [(player, amount)]
         self.player_hole_cards: Dict[str, List[Card]] = {}  # {player: [cards]}
@@ -39,9 +40,10 @@ class PluribusParser:
     """
     Parser for Pluribus poker hand history files
     """
-    def __init__(self, log_dir: str):
+    def __init__(self, log_dir: str, create_core_games: bool = False):
         self.log_dir = log_dir
         self.hand_histories: List[HandHistory] = []
+        self.create_core_games = create_core_games
         
     def parse_all_files(self) -> List[HandHistory]:
         """

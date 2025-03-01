@@ -181,3 +181,10 @@ poker/parsers/pluribus_strategy_analysis.ipynb
 poker/pluribus_log_explorer.ipynb
 poker/play_vs_ai.py
 poker/game_state_explorer.ipynb
+train_simple.py 
+train_raise_model.py 
+train_both_models.py 
+train_agent.py 
+test_simple_model.py 
+test_models.py 
+play_with_ai.py
