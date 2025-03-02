@@ -216,16 +216,17 @@ class ImitationAgent:
                 len([p for p in state.other_players if p.in_game]) if hasattr(state, 'other_players') else 0  # Active opponents
             ]
             
-            # Add derived features
-            pot_to_stack = state.pot_size / max(1, state.my_player.stack_size) if hasattr(state, 'pot_size') and hasattr(state, 'my_player') and hasattr(state.my_player, 'stack_size') else 0
-            feature_vec.append(pot_to_stack)
-            
-            # Add pot odds if applicable
-            if hasattr(state, 'pot_size') and hasattr(state, 'min_bet_to_continue') and state.pot_size > 0 and state.min_bet_to_continue > 0:
-                pot_odds = state.min_bet_to_continue / (state.pot_size + state.min_bet_to_continue)
+            # Add raw values without normalization - instead of pot_to_stack ratio, add pot size and stack size separately
+            if hasattr(state, 'pot_size'):
+                feature_vec.append(state.pot_size)  # Raw pot size
             else:
-                pot_odds = 0
-            feature_vec.append(pot_odds)
+                feature_vec.append(0)
+                
+            # Add raw min_bet value instead of pot odds
+            if hasattr(state, 'min_bet_to_continue'):
+                feature_vec.append(state.min_bet_to_continue)  # Raw min bet
+            else:
+                feature_vec.append(0)
             
             # One-hot encoding for stage
             stage_value = state.stage.value if hasattr(state, 'stage') and state.stage is not None else 0
@@ -460,12 +461,16 @@ class ImitationAgent:
                 min_bet = max(game_state.min_bet_to_continue, big_blind)
                 pot_size = max(game_state.pot_size, big_blind * 2)
                 
-                # Calculate raise amount - scale from 0.5x to 3x pot
+                # Calculate raw raise amount without pot size normalization
+                # Use raise_multiplier directly as a scaling factor for the stack size
                 base_amount = min_bet
-                additional_amount = pot_size * (0.5 + raise_multiplier * 2.5)
                 
-                # Ensure raise is at least min_bet and not zero
-                raise_amount = min(max(base_amount + additional_amount, min_bet), game_state.my_player.stack_size)
+                # Scale based on stack size rather than pot size
+                stack_size = game_state.my_player.stack_size
+                additional_amount = stack_size * raise_multiplier
+                
+                # Ensure raise is at least min_bet and not more than stack size
+                raise_amount = min(max(base_amount + additional_amount, min_bet), stack_size)
                 if raise_amount < min_bet:
                     raise_amount = min_bet
                 
@@ -822,10 +827,9 @@ def train_imitation_agent(log_dir: str = None, save_dir: str = './models', devic
             action_idx = action.value
             action_labels.append(action_idx)
             
-            # Normalize raise amount as fraction of pot size
-            if action == Action.RAISE and amount is not None and state.pot_size > 0:
-                norm_amount = min(amount / state.pot_size, 5.0)  # Cap at 5x pot for stability
-                raise_amounts.append(norm_amount)
+            # Use raw raise amount without normalization
+            if action == Action.RAISE and amount is not None:
+                raise_amounts.append(amount)  # Use raw amount
             else:
                 raise_amounts.append(0.0)
         
