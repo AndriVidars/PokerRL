@@ -30,7 +30,12 @@ class PokerHand:
     def __init__(self, hand_id: str, players: List[str], blinds: List[int], starting_stacks: List[int]):
         self.hand_id = hand_id
         self.players = players
+        
+        # blinds_or_straddles array: [50, 100, 0, 0, 0, 0]
+        # where index 0 is small blind, index 1 is big blind
+        # This corresponds to the player positions in the hand
         self.blinds = blinds
+        
         self.starting_stacks = starting_stacks
         self.player_cards: Dict[str, List[Card]] = {}
         self.community_cards: List[Card] = []

@@ -21,14 +21,22 @@ class GameStateExtractor:
         """
         Determine player positions relative to the big blind.
         Returns a dictionary mapping player names to positions (0=BB, 1=UTG, etc.)
+        
+        In blinds_or_straddles = [50, 100, 0, 0, 0, 0],
+        the first position (index 0) is small blind (SB),
+        the second position (index 1) is big blind (BB),
+        and remaining positions follow clockwise.
         """
         positions = {}
         
-        # Find big blind position (highest blind)
-        bb_position = self.hand.blinds.index(max(self.hand.blinds))
+        # The blinds array directly corresponds to player positions in order
+        # The SB is at index 0, BB at index 1, etc.
+        # So we know that player at index 1 is the BB (position 0)
+        bb_position = 1  # Big blind is always at position 1 in the blinds array
         
         for i, player in enumerate(self.hand.players):
             # Position relative to BB (how many spots to the left of BB)
+            # In poker terminology, BB is position 0, then UTG is 1, etc.
             rel_pos = (i - bb_position) % len(self.hand.players)
             positions[player] = rel_pos
         
