@@ -5,8 +5,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import torch
 from torch import nn
-from poker.agents.game_state import Stage
-from poker.core.action import Action
+from Poker.agents.game_state import Stage
+from Poker.core.action import Action
 from typing import Tuple, List
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -150,28 +150,29 @@ class PokerPlayerNetV1(nn.Module):
                         with torch.no_grad():
                             for batch in val_loader:
                                 batch = tuple(t.to(device) for t in batch)
-                                loss = self.compute_loss(loss)
+                                loss = self.compute_loss(batch)
                                 val_loss += loss.item()
                         avg_val_loss = val_loss / len(val_loader)
                         print(f"Validation Loss: {avg_val_loss:.4f}")
                         valid_lossess.append(avg_val_loss)
             step += 1
 
+        return valid_lossess
+
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         player_turn, other_player_turns = state.get_effective_turns()
+        player_turn = 0
+        other_player_turns = [0] * len(other_player_turns)
 
         # Construct player / game state
         rel_stack_size = state.my_player.stack_size / state.pot_size
-        turn_to_act = player_turn
+        turn_to_act = 0 # player_turn
         hand_rank = state.get_hand_strength()
         c_hand_rank = state.get_community_hand_strength()
         rel_min_bet = state.min_bet_to_continue / state.pot_size
-        try:
-            x_player_game = torch.Tensor([rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
-        except:
-            import pdb; pdb.set_trace()
+        x_player_game = torch.Tensor([rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
 
         # separate acted and non-acted players
         acted_players = [(player, turn) for player, turn in
@@ -185,22 +186,23 @@ class PokerPlayerNetV1(nn.Module):
         # note that order does not matter right now 
         acted_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
-                t, # turn to act
+                0, #t, # turn to act
                 p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
             ) for p, t in acted_players
         ]
         # Construct to-act players state, only if not in preflop
         to_act_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
-                t, # turn to act
+                0, #, # turn to act
                 p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
             ) for p, t in to_act_players
         ] if state.stage != Stage.PREFLOP else []
 
-        x_acted_players = torch.Tensor(acted_players_data)
-        x_to_act_players = torch.Tensor(to_act_players_data)
+        x_acted_players = torch.Tensor(acted_players_data)*0
+        x_to_act_players = torch.Tensor(to_act_players_data)*0
 
-        desired_shape = (9, (x_acted_players.shape[1] if len(x_acted_players.shape) >= 2 else x_to_act_players.shape[1]))
+        # desired_shape = (9, (x_acted_players.shape[1] if len(x_acted_players.shape) >= 2 else x_to_act_players.shape[1]))
+        desired_shape = (9, 3)
 
         # pad with 0s
         pad = torch.zeros(desired_shape[0]-x_acted_players.shape[0], desired_shape[1])
