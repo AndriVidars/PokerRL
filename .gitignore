@@ -174,3 +174,4 @@ cython_debug/
 # Project specific
 
 **/.DS_Store
+.DS_Store

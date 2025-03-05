@@ -170,7 +170,6 @@ class GameStateBuilder:
                 key, value = line.split('=', 1)
                 data[key.strip()] = self._parse_value(value.strip())
         
-        # If it's a single line, try to parse it as a series of assignments
         if not data:
             parts = hand_data.split(' ')
             current_key = None
@@ -191,18 +190,15 @@ class GameStateBuilder:
         return data
     
     def _parse_value(self, value_str: str):
-        """Safely parse a value string into the appropriate Python data type"""
-        # Handle JavaScript/JSON style booleans
+        """Parse a value string into the appropriate Python data type"""
         if value_str == 'true':
             return True
         elif value_str == 'false':
             return False
         
-        # Try to parse as a Python literal
         try:
             return eval(value_str)
         except (NameError, SyntaxError):
-            # If it fails, just return the string
             return value_str
     
     def _find_blinds(self, data: dict, result: dict):
@@ -229,10 +225,8 @@ class GameStateBuilder:
     
     def _setup_players(self, data: dict, result: dict):
         """Set up player information and calculate spots from BB"""
-        # Create a list of player names in order for easier indexing
         result["player_list"] = data["players"]
         
-        # Extract blinds information for easier access
         blinds = data.get("blinds_or_straddles", [0] * len(data["players"]))
         
         for i, player_name in enumerate(data["players"]):
@@ -404,7 +398,6 @@ class GameStateBuilder:
     
     def build_player_gamestates(self, hand_data: str, target_player: str) -> List[GameState]:
         """Build GameState objects for a specific player's decision points"""
-        # Parse the hand data
         parsed_data = self.parse_hand(hand_data)
         
         # Find the target player's decision points
@@ -449,11 +442,9 @@ class GameStateBuilder:
                     board_idx = 5
                 community_cards = parsed_data["board_cards"][:board_idx]
             
-            # Calculate pot size before this action
             pot_size = player_action["pot_before"]
             
-            # Determine min_bet_to_continue
-            min_bet = 0
+
             # Find the highest contribution so far
             highest_contribution = 0
             for stage_actions in parsed_data["actions_by_stage"].values():
@@ -472,21 +463,22 @@ class GameStateBuilder:
             if min_bet_to_continue < 0:
                 min_bet_to_continue = 0  
             
+            # Calculate current stack size - starting with blind-adjusted stack from player_stacks
             current_stack = parsed_data["player_stacks"][target_player]
             
             
+            # Then deduct any additional contributions up to current action
             for stage_actions in parsed_data["actions_by_stage"].values():
                 for act in stage_actions:
                     if act["action_idx"] < action_idx and act["player"] == target_player:
                         if act["action"] == Action.CHECK_CALL and act["amount"] is not None:
-                            
+
                             blinds = 0
                             if target_player in parsed_data["player_list"]:
                                 player_idx = parsed_data["player_list"].index(target_player)
                                 if player_idx < len(parsed_data.get("blinds_or_straddles", [])):
                                     blinds = parsed_data.get("blinds_or_straddles", [])[player_idx]
                             
-                            # Only deduct the difference between call amount and blind
                             if act["amount"] > blinds:
                                 current_stack -= (act["amount"] - blinds)
             
@@ -523,15 +515,12 @@ class GameStateBuilder:
                     if prev_stage_name == "PREFLOP":
                         my_player.add_preflop_action(player_action_in_stage["action"], player_action_in_stage["amount"])
                     elif prev_stage_name == "FLOP":
-                        # Only add flop action if player acted in preflop
                         if player_has_acted["PREFLOP"]:
                             my_player.add_flop_action(player_action_in_stage["action"], player_action_in_stage["amount"])
                     elif prev_stage_name == "TURN":
-                        # Only add turn action if player acted in preflop and flop
                         if player_has_acted["PREFLOP"] and player_has_acted["FLOP"]:
                             my_player.add_turn_action(player_action_in_stage["action"], player_action_in_stage["amount"])
                     elif prev_stage_name == "RIVER":
-                        # Only add river action if player acted in preflop, flop, and turn
                         if player_has_acted["PREFLOP"] and player_has_acted["FLOP"] and player_has_acted["TURN"]:
                             my_player.add_river_action(player_action_in_stage["action"], player_action_in_stage["amount"])
             
@@ -539,13 +528,10 @@ class GameStateBuilder:
             other_players = []
             for player_name in parsed_data["player_stacks"].keys():
                 if player_name != target_player:
-                    # Calculate current stack size for this player
                     player_stack = parsed_data["player_stacks"][player_name]
                     
-                    # Get this player's position relative to BB
                     player_spots_from_bb = parsed_data["player_positions"][player_name]
                     
-                    # Deduct blinds and antes
                     if player_name in parsed_data["player_list"]:
                         player_idx = parsed_data["player_list"].index(player_name)
                         if player_idx < len(parsed_data.get("blinds_or_straddles", [])) and parsed_data.get("blinds_or_straddles", [])[player_idx] > 0:
@@ -558,14 +544,12 @@ class GameStateBuilder:
                                 if act["action"] == Action.CHECK_CALL and act["amount"] is not None:
                                     player_stack -= act["amount"]
                                 elif act["action"] == Action.RAISE and act["amount"] is not None:
-                                    # For raises, deduct the amount above what was already posted as blind
                                     if player_name in parsed_data["player_list"]:
                                         player_idx = parsed_data["player_list"].index(player_name)
                                         blinds = 0
                                         if player_idx < len(parsed_data.get("blinds_or_straddles", [])):
                                             blinds = parsed_data.get("blinds_or_straddles", [])[player_idx]
                                         
-                                        # Deduct the raise amount minus any blind already posted
                                         player_stack -= (act["amount"] - blinds)
                     
                     other_player = Player(
@@ -583,6 +567,7 @@ class GameStateBuilder:
                         "RIVER": False
                     }
                     
+                    # Process previous complete stages - all actions are visible
                     for prev_stage_name in ["PREFLOP", "FLOP", "TURN", "RIVER"]:
                         # Only process up to the current stage
                         if self.stages[prev_stage_name].value >= stage.value:
@@ -609,12 +594,13 @@ class GameStateBuilder:
                                 if other_player_has_acted["PREFLOP"] and other_player_has_acted["FLOP"] and other_player_has_acted["TURN"]:
                                     other_player.add_river_action(player_action_in_stage["action"], player_action_in_stage["amount"])
                     
+                    # Process current stage - only for players who already acted BEFORE current player's turn
                     if stage_name in parsed_data["actions_by_stage"]:
                         # Get this player's action order in the current stage
                         player_turn_order = self._get_player_turn_order(player_spots_from_bb, stage_name)
                         target_player_turn_order = self._get_player_turn_order(target_player_spots_from_bb, stage_name)
                         
-                        # This player's actions are only visible if they acted before the target player
+                       
                         if player_turn_order < target_player_turn_order:
                             # Find the player's action in current stage
                             player_action_in_current_stage = None
@@ -631,7 +617,6 @@ class GameStateBuilder:
                                         previous_stages_complete = False
                                         break
                                 
-                                # Only add action if player has actions for all previous stages
                                 if previous_stages_complete:
                                     if stage_name == "PREFLOP":
                                         other_player.add_preflop_action(player_action_in_current_stage["action"], player_action_in_current_stage["amount"])
@@ -663,17 +648,27 @@ class GameStateBuilder:
         """
         Determine a player's turn order based on their position relative to BB
         """
-      
+        if stage_name == "PREFLOP":
+            # UTG is first to act
+            if spots_from_bb == 1:
+                return 0
+            elif spots_from_bb == -1:  
+                return float('inf') - 1
+            # BB acts last
+            elif spots_from_bb == 0:
+                return float('inf')
+            else:
+                return spots_from_bb - 1  
         
-        # BB always acts last
-        if spots_from_bb == 0:
-            return float('inf')  # Use infinity to ensure BB is always last
-            
-        # SB acts first
-        if spots_from_bb == -1:
-            return 0
-            
-        # All other positions (UTG, MP, CO, BTN) act in order of distance from BB
+        # POSTFLOP (FLOP, TURN, RIVER): SB acts first, then BB, then UTG, etc.
+        else:
+            if spots_from_bb == -1:
+                return 0
+            elif spots_from_bb == 0:
+                return 1
+            else:
+                return spots_from_bb + 1  
+        
         return spots_from_bb
     
     def format_gamestate(self, gamestate: GameState) -> str:
