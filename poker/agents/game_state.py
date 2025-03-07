@@ -104,6 +104,9 @@ class GameState():
         if len(self.community_cards) == 0: return 0
         return self.compute_hand_strength(self.community_cards)
 
+    def get_hand_strength(self): return self.hand_strength
+    def get_community_hand_strength(self): return self.community_hand_strenght
+
     def get_effective_turns(self):
         # For every player returns None if the player is not in the game any more.
         # Otherwise, returns their effective turn (i.e. removing all ppl that folded).
@@ -118,10 +121,6 @@ class GameState():
         return my_player_in_game_turn, other_players_in_game_turn
     
 
-
-
-
-  
 class GameStateBuilder:
     def __init__(self):
         self.stages = {
