@@ -79,7 +79,7 @@ class PokerPlayerNetV1(nn.Module):
         self.gather_net = FFN(
             idim=50,
             hdim=30,
-            odim=2, # (fold / no_fold), raise size
+            odim=4, # (fold,check/call,raise), raise size
             n_hidden=3,
             use_batchnorm=use_batchnorm,
         )
@@ -102,20 +102,22 @@ class PokerPlayerNetV1(nn.Module):
         ], dim=-1)
 
         out = self.gather_net(all_game_state)
-        fold_logits = out[:, 0]
-        raise_size = out[:, 1]
+        action_logits = out[:, :-1]
+        raise_size = out[:, -1]
 
-        return torch.sigmoid(fold_logits), raise_size
+        return action_logits, raise_size
 
     def compute_loss(self, batch):
         x_player_game, x_acted_players, x_to_act_players, player_action = batch
-        fold_logits, raise_size = self(x_player_game, x_acted_players, x_to_act_players)
-        real_fold_p, real_raise_size = player_action[:, 0], player_action[:, 1]
+        action_logits, raise_size = self(x_player_game, x_acted_players, x_to_act_players)
+        real_player_action, real_raise_size = player_action[:, 0], player_action[:, 1]
 
-        fold_loss = nn.functional.binary_cross_entropy(fold_logits, real_fold_p)
+        fold_loss = nn.functional.cross_entropy(action_logits, real_player_action.to(torch.int64))
 
-        not_fold = ~real_fold_p.to(torch.bool)
-        raise_loss = nn.functional.mse_loss(raise_size[not_fold], real_raise_size[not_fold])
+        should_raise = real_player_action == 2
+        raise_loss = 0
+        if should_raise.any():
+            raise_loss = nn.functional.mse_loss(raise_size[should_raise], real_raise_size[should_raise])
 
         loss = fold_loss + raise_loss
         return loss
@@ -164,6 +166,12 @@ class PokerPlayerNetV1(nn.Module):
                 _step += 1
         return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps)).set_index("step")
 
+    def eval_game_state(self, game_state):
+        self.eval()
+        batch = self.game_state_to_batch(game_state)
+        with torch.no_grad():
+            action_logits, raise_size = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))
+        return torch.softmax(action_logits[0], dim=-1), raise_size[0]
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -219,7 +227,7 @@ class PokerPlayerNetV1(nn.Module):
 
         raise_size = state.my_player_action[1]
         raise_size = 0 if raise_size is None else raise_size / state.pot_size
-        player_action = torch.Tensor([float(state.my_player_action[0] == Action.FOLD), raise_size])
+        player_action = torch.Tensor([state.my_player_action[0].value, raise_size])
         return x_player_game, x_acted_players, x_to_act_players, player_action
 
     @staticmethod
