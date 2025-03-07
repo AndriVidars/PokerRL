@@ -101,7 +101,7 @@ class GameState():
 
     @property
     def hand_strength(self):
-         self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
+        return self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
 
     @property
     def community_hand_strenght(self):
