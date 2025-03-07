@@ -11,6 +11,7 @@ from typing import Tuple, List
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import torch.optim as optim
+import pandas as pd
 
 class GameStateTensorDataset(Dataset):
     def __init__(self, data_list): self.data_list = data_list
@@ -125,10 +126,12 @@ class PokerPlayerNetV1(nn.Module):
         self.to(device)
         optimizer = optim.AdamW(self.parameters(), lr=lr)
 
+        train_losses = []
         valid_lossess = []
+        steps = []
+        _step = 0
+        train_loss = 0
         for epoch in tqdm(range(num_epochs)):
-            total_loss = 0
-            step = 0
             for batch in train_loader:
                 self.train()
                 batch = tuple(t.to(device) for t in batch)
@@ -138,12 +141,14 @@ class PokerPlayerNetV1(nn.Module):
                 loss.backward()
                 optimizer.step()
 
-                total_loss += loss.item()
-
-                if step % eval_steps == 0:
-                    avg_train_loss = total_loss / len(train_loader)
+                train_loss += loss.item()
+                if (_step + 1) % eval_steps == 0:
+                    steps.append(_step)
+                    avg_train_loss = train_loss / eval_steps
+                    train_losses.append(avg_train_loss)
+                    train_loss = 0
                     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {avg_train_loss:.4f}")
-
+                    
                     if val_loader:
                         self.eval()
                         val_loss = 0
@@ -155,9 +160,9 @@ class PokerPlayerNetV1(nn.Module):
                         avg_val_loss = val_loss / len(val_loader)
                         print(f"Validation Loss: {avg_val_loss:.4f}")
                         valid_lossess.append(avg_val_loss)
-            step += 1
-
-        return valid_lossess
+                    
+                _step += 1
+        return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps)).set_index("step")
 
 
     @staticmethod

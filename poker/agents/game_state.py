@@ -58,6 +58,14 @@ class Player():
     @property
     def in_game(self):
         return not any([action == Action.FOLD for action, _ in self.history])
+    
+    def __str__(self):
+        res = ""
+        res += f"in_game: {self.in_game}\n"
+        res += f"spots_left_bb: {self.spots_left_bb}\n"
+        res += f"cards: {self.cards}\n"
+        res += f"history: {self.history}\n"
+        return res
 
 class GameState():
     """
@@ -93,18 +101,15 @@ class GameState():
 
     @property
     def hand_strength(self):
-        """ Returns the hand strength of the hand with respect to all possible hands.
-        """
-        return self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
+         self.compute_hand_strength(list(self.my_player.cards) + self.community_cards)
 
     @property
     def community_hand_strenght(self):
-        """ Returns the hand strength of the community hand with respect to all possible hands.
-        """
         if len(self.community_cards) == 0: return 0
         return self.compute_hand_strength(self.community_cards)
 
     def get_hand_strength(self): return self.hand_strength
+    
     def get_community_hand_strength(self): return self.community_hand_strenght
 
     def get_effective_turns(self):
@@ -119,6 +124,21 @@ class GameState():
         my_player_in_game_turn = in_game_turns[0]
         other_players_in_game_turn = in_game_turns[1:]
         return my_player_in_game_turn, other_players_in_game_turn
+    
+    def __str__(self):
+        res = ""
+        res += f"stage: {self.stage}\n"
+        res += f"pot_size: {self.pot_size}\n"
+        res += f"min_bet_to_continue: {self.min_bet_to_continue}\n"
+        res += f"community cards: {self.community_cards}\n"
+        res += f"\n====== my player ======\n"
+        res += f"{self.my_player}"
+        res += f"my_player_action: {self.my_player_action}\n"
+        res += f"=========================\n"
+        res += f"\n==== other players =====\n"
+        for p in self.other_players: res += f"{p}\n"
+        res += f"==========================\n"
+        return res
     
 
 class GameStateBuilder:
