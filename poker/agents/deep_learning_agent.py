@@ -107,6 +107,24 @@ class PokerPlayerNetV1(nn.Module):
 
         return action_logits, raise_size
 
+    def get_actions(self, *args):
+        action_logits, raise_size = self(*args)
+        return torch.argmax(action_logits, dim=-1), raise_size
+
+    def eval_acc_batch(self, batch):
+        x_player_game, x_acted_players, x_to_act_players, player_action = batch
+        action, raise_size = self.get_actions(x_player_game, x_acted_players, x_to_act_players)
+        
+        real_player_action, real_raise_size = player_action[:, 0], player_action[:, 1]
+        should_raise = real_player_action == 2
+        
+        acc = (action == real_player_action).to(float).mean()
+        raise_size_mse = torch.tensor(0)
+        if should_raise.any():
+            raise_size_mse = nn.functional.mse_loss(raise_size[should_raise], real_raise_size[should_raise])
+
+        return acc, raise_size_mse
+
     def compute_loss(self, batch):
         x_player_game, x_acted_players, x_to_act_players, player_action = batch
         action_logits, raise_size = self(x_player_game, x_acted_players, x_to_act_players)
@@ -130,6 +148,7 @@ class PokerPlayerNetV1(nn.Module):
 
         train_losses = []
         valid_lossess = []
+        valid_metrics = {"action_acc":[], "raise_size_mse":[]}
         steps = []
         _step = 0
         train_loss = 0
@@ -154,17 +173,26 @@ class PokerPlayerNetV1(nn.Module):
                     if val_loader:
                         self.eval()
                         val_loss = 0
+                        val_action_acc = 0
+                        val_raise_size_mse = 0
                         with torch.no_grad():
                             for batch in val_loader:
                                 batch = tuple(t.to(device) for t in batch)
                                 loss = self.compute_loss(batch)
+                                action_acc, raise_loss = self.eval_acc_batch(batch)
                                 val_loss += loss.item()
+                                val_action_acc += action_acc.item()
+                                val_raise_size_mse += raise_loss.item()
                         avg_val_loss = val_loss / len(val_loader)
-                        print(f"Validation Loss: {avg_val_loss:.4f}")
+                        avg_val_action_acc = val_action_acc / len(val_loader)
+                        avg_val_raise_mse = val_raise_size_mse / len(val_loader)
+                        print(f"Validation Loss: {avg_val_loss:.4f}, avg_val_action_acc: {avg_val_action_acc:.4f}, avg_val_raise_size_mse: {avg_val_raise_mse}")
                         valid_lossess.append(avg_val_loss)
+                        valid_metrics["action_acc"].append(avg_val_action_acc)
+                        valid_metrics["raise_size_mse"].append(avg_val_raise_mse)
                     
                 _step += 1
-        return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps)).set_index("step")
+        return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps, **valid_metrics)).set_index("step")
 
     def eval_game_state(self, game_state):
         self.eval()
