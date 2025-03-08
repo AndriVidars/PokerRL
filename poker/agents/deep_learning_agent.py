@@ -85,7 +85,8 @@ class PokerPlayerNetV1(nn.Module):
             n_hidden=3,
             use_batchnorm=use_batchnorm,
         )
-        self.aggressiveness = 1.0 # agressiveness just controls probabilities
+        self.aggressiveness_call = 1.0 # agressiveness just controls probabilities
+        self.aggressiveness_raise = 1.0 # agressiveness just controls probabilities
 
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
         # x_player_game : (B, 5)
@@ -205,8 +206,8 @@ class PokerPlayerNetV1(nn.Module):
         batch = self.game_state_to_batch(game_state)
         with torch.no_grad():
             action_logits, raise_size = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))
-        action_logits[1] *= self.aggressiveness # call
-        action_logits[2] *= self.aggressiveness # raise
+        action_logits[:, 1] *= self.aggressiveness_call # call
+        action_logits[:, 2] *= self.aggressiveness_raise # raise
         return torch.softmax(action_logits[0], dim=-1), raise_size[0]
 
     @staticmethod
