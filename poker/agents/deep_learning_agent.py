@@ -12,6 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import torch.optim as optim
 import pandas as pd
+import numpy as np
 
 class GameStateTensorDataset(Dataset):
     def __init__(self, data_list): self.data_list = data_list
@@ -83,6 +84,7 @@ class PokerPlayerNetV1(nn.Module):
             n_hidden=3,
             use_batchnorm=use_batchnorm,
         )
+        self.margin = 0.2
 
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
         # x_player_game : (B, 5)
@@ -107,10 +109,29 @@ class PokerPlayerNetV1(nn.Module):
 
         return action_logits, raise_size
 
-    def get_actions(self, *args):
-        action_logits, raise_size = self(*args)
-        return torch.argmax(action_logits, dim=-1), raise_size
+    def run_eval(self, dl, device=None):
+        self.eval()
+        val_loss = 0
+        val_action_acc = 0
+        val_raise_size_mse = 0
+        with torch.no_grad():
+            for batch in dl:
+                batch = tuple(t.to(device) for t in batch)
+                loss = self.compute_loss(batch)
+                action_acc, raise_loss = self.eval_acc_batch(batch)
+                val_loss += loss.item()
+                val_action_acc += action_acc.item()
+                val_raise_size_mse += raise_loss.item()
+        avg_val_loss = val_loss / len(dl)
+        avg_val_action_acc = val_action_acc / len(dl)
+        avg_val_raise_mse = val_raise_size_mse / len(dl)
+        return avg_val_loss, avg_val_action_acc, avg_val_raise_mse
 
+    def get_actions(self, *args):
+        action, raise_size = self(*args)
+        return torch.argmax(action, dim=-1), raise_size
+
+    @torch.no_grad()
     def eval_acc_batch(self, batch):
         x_player_game, x_acted_players, x_to_act_players, player_action = batch
         action, raise_size = self.get_actions(x_player_game, x_acted_players, x_to_act_players)
@@ -127,23 +148,18 @@ class PokerPlayerNetV1(nn.Module):
 
     def compute_loss(self, batch):
         x_player_game, x_acted_players, x_to_act_players, player_action = batch
-        action_logits, raise_size = self(x_player_game, x_acted_players, x_to_act_players)
+        action, raise_size = self(x_player_game, x_acted_players, x_to_act_players)
         real_player_action, real_raise_size = player_action[:, 0], player_action[:, 1]
 
-        fold_loss = nn.functional.cross_entropy(action_logits, real_player_action.to(torch.int64))
-
-        should_raise = real_player_action == 2
+        action_loss = nn.functional.cross_entropy(action, real_player_action.to(torch.int64)) 
         raise_loss = 0
-        if should_raise.any():
-            raise_loss = nn.functional.mse_loss(raise_size[should_raise], real_raise_size[should_raise])
-
-        loss = fold_loss + raise_loss
+        not_folded = real_player_action >= 2
+        if torch.any(not_folded):
+            raise_loss = nn.functional.mse_loss(raise_size[not_folded], real_raise_size[not_folded])
+        loss = raise_loss + action_loss
         return loss
 
     def train_model(self, train_loader, val_loader=None, num_epochs=10, lr=1e-3, device=None, eval_steps=100):
-        if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.to(device)
         optimizer = optim.AdamW(self.parameters(), lr=lr)
 
         train_losses = []
@@ -171,21 +187,7 @@ class PokerPlayerNetV1(nn.Module):
                     print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {avg_train_loss:.4f}")
                     
                     if val_loader:
-                        self.eval()
-                        val_loss = 0
-                        val_action_acc = 0
-                        val_raise_size_mse = 0
-                        with torch.no_grad():
-                            for batch in val_loader:
-                                batch = tuple(t.to(device) for t in batch)
-                                loss = self.compute_loss(batch)
-                                action_acc, raise_loss = self.eval_acc_batch(batch)
-                                val_loss += loss.item()
-                                val_action_acc += action_acc.item()
-                                val_raise_size_mse += raise_loss.item()
-                        avg_val_loss = val_loss / len(val_loader)
-                        avg_val_action_acc = val_action_acc / len(val_loader)
-                        avg_val_raise_mse = val_raise_size_mse / len(val_loader)
+                        avg_val_loss, avg_val_action_acc, avg_val_raise_mse = self.run_eval(val_loader, device) 
                         print(f"Validation Loss: {avg_val_loss:.4f}, avg_val_action_acc: {avg_val_action_acc:.4f}, avg_val_raise_size_mse: {avg_val_raise_mse}")
                         valid_lossess.append(avg_val_loss)
                         valid_metrics["action_acc"].append(avg_val_action_acc)
@@ -254,6 +256,7 @@ class PokerPlayerNetV1(nn.Module):
         x_to_act_players = torch.concat((x_to_act_players, pad) , dim=0)
 
         raise_size = state.my_player_action[1]
+        if state.my_player_action[0].value == 1: raise_size = state.min_bet_to_continue # if call/check
         raise_size = 0 if raise_size is None else raise_size / state.pot_size
         player_action = torch.Tensor([state.my_player_action[0].value, raise_size])
         return x_player_game, x_acted_players, x_to_act_players, player_action
