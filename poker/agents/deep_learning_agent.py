@@ -54,8 +54,9 @@ class PokerPlayerNetV1(nn.Module):
     def __init__(self, use_batchnorm=False):
         super().__init__()
 
+        self.stage_embed = nn.Embedding(4, 10)
         self.player_game_net = FFN(
-            idim=5, # stack_size, turn_to_act, hand_rank, c_hand_rank, min_bet
+            idim=6, # stage, stack_size, turn_to_act, hand_rank, c_hand_rank, min_bet
             hdim=10,
             odim=10,
             n_hidden=2,
@@ -78,13 +79,13 @@ class PokerPlayerNetV1(nn.Module):
         )
 
         self.gather_net = FFN(
-            idim=50,
+            idim=60,
             hdim=30,
             odim=4, # (fold,check/call,raise), raise size
             n_hidden=3,
             use_batchnorm=use_batchnorm,
         )
-        self.margin = 0.2
+        self.aggressiveness = 1.0 # agressiveness just controls probabilities
 
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
         # x_player_game : (B, 5)
@@ -93,12 +94,15 @@ class PokerPlayerNetV1(nn.Module):
         player_game_state = self.player_game_net(x_player_game)
         acted_player_history_state = self.acted_player_history_net(x_acted_history)
         to_act_player_history_state = self.to_act_player_history_net(x_to_act_history)
+        stage = x_player_game[:, 0].to(torch.int64)
 
+        stage_embeds = self.stage_embed(stage)
         acted_player_history_state = acted_player_history_state.sum(dim=1)
         to_act_player_history_state = to_act_player_history_state.sum(dim=1)
 
         all_game_state = torch.concat([
             player_game_state,
+            stage_embeds,
             acted_player_history_state,
             to_act_player_history_state,
         ], dim=-1)
@@ -201,21 +205,21 @@ class PokerPlayerNetV1(nn.Module):
         batch = self.game_state_to_batch(game_state)
         with torch.no_grad():
             action_logits, raise_size = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))
+        action_logits[1] *= self.aggressiveness # call
+        action_logits[2] *= self.aggressiveness # raise
         return torch.softmax(action_logits[0], dim=-1), raise_size[0]
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         player_turn, other_player_turns = state.get_effective_turns()
-        player_turn = 0
-        other_player_turns = [0] * len(other_player_turns)
 
         # Construct player / game state
         rel_stack_size = state.my_player.stack_size / state.pot_size
-        turn_to_act = 0 # player_turn
+        turn_to_act = player_turn
         hand_rank = state.get_hand_strength()
         c_hand_rank = state.get_community_hand_strength()
         rel_min_bet = state.min_bet_to_continue / state.pot_size
-        x_player_game = torch.Tensor([rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
+        x_player_game = torch.Tensor([state.stage.value, rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
 
         # separate acted and non-acted players
         acted_players = [(player, turn) for player, turn in
@@ -229,20 +233,20 @@ class PokerPlayerNetV1(nn.Module):
         # note that order does not matter right now 
         acted_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
-                0, #t, # turn to act
+                t, #t, # turn to act
                 p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
             ) for p, t in acted_players
         ]
         # Construct to-act players state, only if not in preflop
         to_act_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
-                0, #, # turn to act
+                t, #, # turn to act
                 p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
             ) for p, t in to_act_players
         ] if state.stage != Stage.PREFLOP else []
 
-        x_acted_players = torch.Tensor(acted_players_data)*0
-        x_to_act_players = torch.Tensor(to_act_players_data)*0
+        x_acted_players = torch.Tensor(acted_players_data)
+        x_to_act_players = torch.Tensor(to_act_players_data)
 
         # desired_shape = (9, (x_acted_players.shape[1] if len(x_acted_players.shape) >= 2 else x_to_act_players.shape[1]))
         desired_shape = (9, 3)
