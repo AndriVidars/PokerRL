@@ -5,8 +5,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import torch
 from torch import nn
-from Poker.agents.game_state import Stage
-from Poker.core.action import Action
+from poker.agents.game_state import Stage
+from poker.core.action import Action
 from typing import Tuple, List
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
@@ -243,14 +243,14 @@ class PokerPlayerNetV1(nn.Module):
         acted_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
                 t, #t, # turn to act
-                p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
+                0 if not p.history else p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better NOTE andri change
             ) for p, t in acted_players
         ]
         # Construct to-act players state, only if not in preflop
         to_act_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
                 t, #, # turn to act
-                p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better
+                p.history[-1][1] / state.pot_size if p.history else 0, # raise_size TODO(roberto): consider using something better
             ) for p, t in to_act_players
         ] if state.stage != Stage.PREFLOP else []
 
@@ -268,10 +268,15 @@ class PokerPlayerNetV1(nn.Module):
         pad = torch.zeros(desired_shape[0]-x_to_act_players.shape[0], desired_shape[1])
         x_to_act_players = torch.concat((x_to_act_players, pad) , dim=0)
 
-        raise_size = state.my_player_action[1]
-        if state.my_player_action[0].value == 1: raise_size = state.min_bet_to_continue # if call/check
-        raise_size = 0 if raise_size is None else raise_size / state.pot_size
-        player_action = torch.Tensor([state.my_player_action[0].value, raise_size])
+        if state.my_player_action:
+            # only for supervised training
+            raise_size = state.my_player_action[1]
+            if state.my_player_action[0].value == 1: raise_size = state.min_bet_to_continue # if call/check
+            raise_size = 0 if raise_size is None else raise_size / state.pot_size
+            player_action = torch.Tensor([state.my_player_action[0].value, raise_size])
+        else:
+            player_action = torch.Tensor([1, 0]) # not used ?
+
         return x_player_game, x_acted_players, x_to_act_players, player_action
 
     @staticmethod

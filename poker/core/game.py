@@ -1,12 +1,13 @@
 from typing import List
-from Poker.core.deck import Deck
-from Poker.core.card import Card
-from Poker.core.player import Player
-from Poker.core.pot import Pot
-from Poker.core.gamestage import Stage
-from Poker.core.action import Action
-import Poker.core.hand_evaluator as hand_eval
+from poker.core.deck import Deck
+from poker.core.card import Card
+from poker.core.player import Player
+from poker.core.pot import Pot
+from poker.core.gamestage import Stage
+from poker.core.action import Action
+import poker.core.hand_evaluator as hand_eval
 from typing import Optional, List, Set
+from poker.agents.game_state import Player as GameStatePlayer
 
 
 class Game:
@@ -23,6 +24,7 @@ class Game:
         self.pots:List[Pot] = []
         self.deck: Optional[Deck] = None 
         self.active_players:Optional[Set[Player]] = set(self.players) # active players in each round - not all in or folded
+        self.game_state_players = {} # this is only used for the deep RL player
 
         self.game_completed = False
         self.rounds_played = 0
@@ -45,6 +47,9 @@ class Game:
     def auto_pot(self):
         non_folded = [p for p in self.players if not p.folded]
         return len(non_folded) == 1
+    
+    def pot_size(self):
+        return sum(p.total_amount for p in self.pots)
     
     def gameplay_loop(self):
         while True:
@@ -70,6 +75,18 @@ class Game:
                 if self.verbose:
                     print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
                 return (self.players[0], self.rounds_played, self.players_eliminated)
+
+    # for deep agent only
+    def pos_from_big_blind(self, player: Player):
+        player_idx = self.players.index(player)
+        active_player_idxs = [i for i, x in enumerate(self.players) if x in self.active_players]
+        bb_idx = self.big_blind_idx
+        while bb_idx not in active_player_idxs:
+            bb_idx = (bb_idx + 1) % len(self.players)
+        
+        bb_position = active_player_idxs.index(bb_idx)
+        player_position = active_player_idxs.index(player_idx)
+        return (player_position - bb_position) % len(active_player_idxs)
 
     def next_player(self, curr_player_idx: int):
         next_idx = (curr_player_idx + 1) % len(self.players)
@@ -111,9 +128,6 @@ class Game:
                 init_player_idx = curr_player_idx
             
             
-            if curr_player.all_in or curr_player.folded:
-                self.active_players.remove(curr_player)
-            
             if len(self.active_players) == 1:
                 break
 
@@ -147,10 +161,13 @@ class Game:
             big_pot.add_contribution(big_player, big_player_amount_in)
             self.pots.append(big_pot)
         
-        small_player.all_in == small_player.stack == 0
-        big_player.all_in == big_player.stack == 0
+        small_player.all_in = small_player.stack == 0
+        big_player.all_in = big_player.stack == 0
 
         if self.verbose:
+            print(f"small: {small_player}")
+            print(f"big: {big_player}")
+
             if small_player.all_in:
                 print(f"Player: {small_player} is now ALL IN")
             if big_player.all_in:
@@ -160,14 +177,18 @@ class Game:
         if self.verbose:
             print(f"\n{25*'-'}\nPreflop\n{25*'-'}\n")
 
-        self.active_players = set(self.players)
         self.handle_blinds()
+        self.active_players = set([p for p in self.players if not p.all_in])
 
         self.deck = Deck()
         for _ in range(2):
             for p in self.players:
                 p.hand.append(self.deck.deck.pop())
 
+        self.game_state_players = {
+            p: GameStatePlayer(self.pos_from_big_blind(p), tuple(p.hand), p.stack)
+            for p in self.active_players
+        }
         self.betting_loop()
     
     def flop(self):

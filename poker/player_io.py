@@ -2,7 +2,7 @@ from poker.core.player import Player
 from poker.core.action import Action
 
 class PlayerIO(Player):
-    def act(self):
+    def _act(self):
         pots = self.game.pots
         call_amt = 0
         print("Current Pot State:")

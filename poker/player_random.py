@@ -5,7 +5,7 @@ import numpy as np
 import random
 
 class PlayerRandom(Player):
-    def act(self):
+    def _act(self):
         max_raise_amt = self.max_raise_amount()
         actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]
         if max_raise_amt < self.game.min_bet:
@@ -34,9 +34,6 @@ class PlayerRandom(Player):
     
     
     def get_raise_amt(self, max_raise_amount):
-        if max_raise_amount < self.game.min_bet:
-            return 0
-
         min_raise = self.game.min_bet
         choices = np.arange(min_raise, max_raise_amount + 1)
         probabilities = np.linspace(1, 0.1, len(choices))

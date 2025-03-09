@@ -14,10 +14,10 @@ import pickle
 # Add project root to path if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from Poker.core.action import Action
-from Poker.core.gamestage import Stage
-from Poker.core.player import Player
-from Poker.agents.game_state import GameState
+from poker.core.action import Action
+from poker.core.gamestage import Stage
+from poker.core.player import Player
+from poker.agents.game_state import GameState
 from Poker.parsers.game_state_retriever import GameStateRetriever
 
 
@@ -690,7 +690,7 @@ class DeepLearningPlayer(Player):
             return random.choice(valid_actions)
         
         # Create a game state for the current situation
-        from Poker.agents.game_state import GameState, Player as StatePlayer
+        from poker.agents.game_state import GameState, Player as StatePlayer
         from Poker.game_state_helper import GameStateHelper
         
         # Use GameStateHelper to create a game state
@@ -896,8 +896,8 @@ def evaluate_agent(agent: ImitationAgent, log_dir: str = None, num_samples: int 
         print("Creating synthetic evaluation data...")
         
         # Create synthetic game states and actions for evaluation
-        from Poker.core.gamestage import Stage
-        from Poker.core.action import Action
+        from poker.core.gamestage import Stage
+        from poker.core.action import Action
         
         eval_decisions = []
         for _ in range(num_samples):
@@ -905,7 +905,7 @@ def evaluate_agent(agent: ImitationAgent, log_dir: str = None, num_samples: int 
             stage = Stage(random.randint(0, 3))
             
             # Create player from the game_state module (StatePlayer)
-            from Poker.agents.game_state import Player as StatePlayer
+            from poker.agents.game_state import Player as StatePlayer
             my_player = StatePlayer(
                 spots_left_bb=random.randint(0, 5),
                 cards=None,  # Not needed for evaluation
@@ -943,8 +943,8 @@ def evaluate_agent(agent: ImitationAgent, log_dir: str = None, num_samples: int 
         if not all_decisions:
             print("No Pluribus decisions found. Creating synthetic evaluation data...")
             # Create synthetic data (same as above)
-            from Poker.core.gamestage import Stage
-            from Poker.core.action import Action
+            from poker.core.gamestage import Stage
+            from poker.core.action import Action
             
             eval_decisions = []
             for _ in range(num_samples):
@@ -952,7 +952,7 @@ def evaluate_agent(agent: ImitationAgent, log_dir: str = None, num_samples: int 
                 stage = Stage(random.randint(0, 3))
                 
                 # Create player from the game_state module (StatePlayer)
-                from Poker.agents.game_state import Player as StatePlayer
+                from poker.agents.game_state import Player as StatePlayer
                 my_player = StatePlayer(
                     spots_left_bb=random.randint(0, 5),
                     cards=None,  # Not needed for evaluation

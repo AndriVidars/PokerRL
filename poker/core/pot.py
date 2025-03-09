@@ -7,6 +7,7 @@ class Pot:
         self.eligible_players = set()  # Players who can win this pot
 
     def add_contribution(self, player, amount):
+        assert amount > 0, f"contribution amount: {amount}"
         if player in self.contributions:
             self.contributions[player] += amount
         else:

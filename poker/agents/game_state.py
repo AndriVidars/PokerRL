@@ -1,7 +1,7 @@
-from Poker.core.card import Card, Rank, Suit
-from Poker.core.gamestage import Stage
-from Poker.core.action import Action
-from Poker.core.hand_evaluator import evaluate_hand
+from poker.core.card import Card, Rank, Suit
+from poker.core.gamestage import Stage
+from poker.core.action import Action
+from poker.core.hand_evaluator import evaluate_hand
 from typing import List, Tuple, Dict, Optional
 import re
 from collections import defaultdict
@@ -33,19 +33,19 @@ class Player():
         self.history: List[Tuple[Action, int]] = []
 
     def add_preflop_action(self, action: Action, raise_size: int | None):
-        assert len(self.history) == 0
+        #assert len(self.history) == 0
         self.history.append((action, raise_size))
     
     def add_flop_action(self, action: Action, raise_size: int | None):
-        assert len(self.history) == 1
+        #assert len(self.history) == 1
         self.history.append((action, raise_size))
 
     def add_turn_action(self, action: Action, raise_size: int | None):
-        assert len(self.history) == 2
+        #assert len(self.history) == 2
         self.history.append((action, raise_size))
     
     def add_river_action(self, action: Action, raise_size: int | None):
-        assert len(self.history) == 3
+        #assert len(self.history) == 3
         self.history.append((action, raise_size))
 
     def turn_to_play(self, stage: Stage, ttl_players:int):

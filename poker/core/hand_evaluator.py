@@ -1,6 +1,6 @@
 from typing import List, Tuple
 from collections import Counter
-from Poker.core.card import RANK_ORDER, Card
+from poker.core.card import RANK_ORDER, Card
 import itertools
 
 def evaluate_hand(cards: List[Card]) -> Tuple[int, List]:
@@ -107,3 +107,19 @@ def _find_best_hand(cards):
             best_tiebreakers = tiebreakers
     
     return (best_rank, best_tiebreakers)
+
+def suit_counter(cards:List[Card]):
+    possible_hands = itertools.combinations(cards, min(5, len(cards)))
+    suit_combs = [[card.suit for card in hand] for hand in possible_hands]
+    max_suit_count = max(max(Counter(hand).values()) for hand in suit_combs)
+    return max_suit_count
+
+def high_card(cards:List[Card]):
+    return max(RANK_ORDER[c.rank] for c in cards)
+
+def high_pair(cards:List[Card]):
+    c = Counter([RANK_ORDER[c.rank] for c in cards])
+    pairs = [k for k,v in c.items() if v == 2]
+    if pairs:
+        return max(pairs)
+    return 0

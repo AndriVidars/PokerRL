@@ -1,11 +1,11 @@
-from Poker.core.card import Card
-from Poker.core.action import Action
-from Poker.core.gamestage import Stage
-from Poker.core.pot import Pot
+from poker.core.card import Card
+from poker.core.action import Action
+from poker.core.gamestage import Stage
+from poker.core.pot import Pot
 from typing import List
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
-class Player:
+class Player(ABC):
     def __init__(self, name:str, stack:int=0):
         self.name = name
         self.stack=stack
@@ -29,21 +29,49 @@ class Player:
         return hash(self.name)
     
     @abstractmethod
-    def act(self) -> Action:
+    def _act(self) -> Action:
         pass
+    
+    def act(self) -> Action:
+        action = self._act()
+        self.post_act_hook(action) 
+        return action
+    
+    def post_act_hook(self, action):
+        self.game.game_state_players[self].stack_size = self.stack
 
+        if action == Action.FOLD:
+            self.folded = True
+
+        # this is also controlled in other places(where it matters in loop)
+        if self.stack == 0:
+            self.all_in == True
+            if self.game.verbose:
+                print(f"Player: {self} is All In")
+
+        if self.folded or self.all_in:
+            self.game.active_players.remove(self)
+            del self.game.game_state_players[self]
+            for p in self.game.active_players:
+                self.game.game_state_players[p].spots_left_bb = self.game.pos_from_big_blind(p)
+        
+    
     def handle_fold(self):
         self.folded = True
         for pot in self.game.pots:
             if self in pot.eligible_players:
                 pot.eligible_players.remove(self)
+        
+        self.game.game_state_players[self].history.append((Action.FOLD, 0))
+        
     
     def handle_check_call(self):
+        self.game.game_state_players[self].history.append((Action.CHECK_CALL, 0))
         for i, pot in enumerate(self.game.pots):            
             pot_max = max(pot.contributions.values())
             due = pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self]
             # need to handle this, maybe the due is always pot max? since
-            if due > self.stack:
+            if due >= self.stack:
                 self.all_in = True
                 amount_in = self.stack
                 self.stack = 0
@@ -52,7 +80,7 @@ class Player:
                 if side_pot:
                     self.game.pots.insert(i+1, side_pot)  
             
-            else:
+            elif due > 0:
                 pot.add_contribution(self, due)
                 self.stack -= due
                 self.all_in = self.stack == 0
@@ -72,9 +100,9 @@ class Player:
                 if self.stack == 0:
                     self.all_in = True
         
+
     def handle_raise(self, raise_amt):
         self.handle_check_call() 
-
         # validate funds
         assert raise_amt <= self.stack, f"Raise amount ({raise_amt}) exceeds stack ({self.stack})"
         assert raise_amt >= self.game.min_bet
@@ -86,6 +114,7 @@ class Player:
         pot = Pot()
         pot.add_contribution(self, raise_amt)
         self.game.pots.append(pot)
+        self.game.game_state_players[self].history.append((Action.RAISE, raise_amt))
 
 
     def get_call_amt_due(self):
