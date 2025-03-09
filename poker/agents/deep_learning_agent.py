@@ -208,7 +208,15 @@ class PokerPlayerNetV1(nn.Module):
             action_logits, raise_size = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
-        return torch.softmax(action_logits[0], dim=-1), raise_size[0]
+        
+        raise_size = raise_size[0]
+        action_logits = action_logits[0]
+        
+        # making actions 
+        raise_size = torch.minimum(raise_size, torch.tensor(game_state.my_player.stack_size / game_state.pot_size))
+        if game_state.my_player.stack_size == 0: # can not raise
+            action_logits[2] = -1e10
+        return torch.softmax(action_logits, dim=-1), raise_size
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
