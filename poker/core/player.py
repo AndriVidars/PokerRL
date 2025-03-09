@@ -42,6 +42,10 @@ class Player(ABC):
 
         if action == Action.FOLD:
             self.folded = True
+            self.game.game_state_players[self].history.append((Action.FOLD, 0))
+        elif action == Action.CHECK_CALL:
+            self.game.game_state_players[self].history.append((Action.CHECK_CALL, 0))
+        # NOTE for the raise action history is added inside the handle_raise
 
         # this is also controlled in other places(where it matters in loop)
         if self.stack == 0:
@@ -62,11 +66,8 @@ class Player(ABC):
             if self in pot.eligible_players:
                 pot.eligible_players.remove(self)
         
-        self.game.game_state_players[self].history.append((Action.FOLD, 0))
-        
-    
+          
     def handle_check_call(self):
-        self.game.game_state_players[self].history.append((Action.CHECK_CALL, 0))
         for i, pot in enumerate(self.game.pots):            
             pot_max = max(pot.contributions.values())
             due = pot_max if self not in pot.eligible_players else pot_max - pot.contributions[self]
