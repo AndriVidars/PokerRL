@@ -167,6 +167,8 @@ class GameStateBuilder:
             "player_stacks": {},
             "actions_by_stage": defaultdict(list),
             "stage_transitions": [],
+            "blinds_or_straddles": data.get("blinds_or_straddles", []),
+            "min_bet": data.get("min_bet", None),
         }
         
         # Find blind positions
@@ -182,7 +184,6 @@ class GameStateBuilder:
     
     def _extract_data(self, hand_data: str) -> dict:
         """Extract data from the hand string"""
-        # Convert the input into a Python dictionary
         data = {}
         for line in hand_data.strip().split('\n'):
             if '=' in line:
@@ -209,7 +210,7 @@ class GameStateBuilder:
         return data
     
     def _parse_value(self, value_str: str):
-        """Parse a value string into the appropriate Python data type"""
+        """Safely parse a value string into the appropriate Python data type"""
         if value_str == 'true':
             return True
         elif value_str == 'false':
@@ -244,6 +245,7 @@ class GameStateBuilder:
     
     def _setup_players(self, data: dict, result: dict):
         """Set up player information and calculate spots from BB"""
+        # Create a list of player names in order for easier indexing
         result["player_list"] = data["players"]
         
         blinds = data.get("blinds_or_straddles", [0] * len(data["players"]))
@@ -269,18 +271,25 @@ class GameStateBuilder:
     def _parse_actions(self, data: dict, result: dict):
         """Parse actions and organize by stage"""
         current_stage = "PREFLOP"
-        current_stage_actions = []
-        pot_size = sum(data.get("blinds_or_straddles", [0]))
+        pot_size = sum(data.get("blinds_or_straddles", []))
         
-        # Track player contributions to calculate pot
-        contributions = {player: 0 for player in data["players"]}
+        # Set initial bet to BB amount for preflop
+        initial_bet = max(data.get("blinds_or_straddles", []))
+        current_bet = initial_bet  
         
-        # Add initial blinds contributions
+        stage_contributions = {
+            "PREFLOP": {player: 0 for player in data["players"]},
+            "FLOP": {player: 0 for player in data["players"]},
+            "TURN": {player: 0 for player in data["players"]},
+            "RIVER": {player: 0 for player in data["players"]}
+        }
+        
+        # Add initial blinds to preflop contributions
         blinds = data.get("blinds_or_straddles", [])
         for i, blind in enumerate(blinds):
             if i < len(data["players"]) and blind > 0:
                 player_name = data["players"][i]
-                contributions[player_name] = blind
+                stage_contributions["PREFLOP"][player_name] = blind
         
         # Process each action
         for action_idx, action in enumerate(data["actions"]):
@@ -300,12 +309,10 @@ class GameStateBuilder:
                 # Record the stage transition
                 result["stage_transitions"].append((current_stage, action_idx))
                 
-                # Add board cards
                 cards_str = action.split(' ')[2]
                 board_cards = self._parse_cards(cards_str)
                 result["board_cards"].extend(board_cards)
                 
-                # Update stage based on board length
                 board_len = len(result["board_cards"])
                 if board_len == 3:
                     current_stage = "FLOP"
@@ -313,6 +320,8 @@ class GameStateBuilder:
                     current_stage = "TURN"
                 elif board_len == 5:
                     current_stage = "RIVER"
+                
+                current_bet = 0
                 
                 continue
             
@@ -327,31 +336,53 @@ class GameStateBuilder:
                 player_id = f"p{player_num}"
                 player_name = result["players"][player_id]
                 
-                # Convert to core Action enum and calculate pot contribution
+                pot_before = pot_size
+                
+                player_contribution = stage_contributions[current_stage][player_name]
+                
+                min_bet_to_continue = max(0, current_bet - player_contribution)
+                
+                if current_stage == "PREFLOP" and current_bet == initial_bet:
+                    # If player hasn't posted a blind, they need to match the BB
+                    if player_contribution < initial_bet:
+                        min_bet_to_continue = initial_bet
+                
                 core_action = None
                 bet_amount = None
+                additional = 0
                 
                 if action_type == "f":
                     core_action = Action.FOLD
+                    bet_amount = None  # No betting with a fold
+                    
                 elif action_type == "cc":
                     core_action = Action.CHECK_CALL
-                    # Find the highest contribution so far
-                    highest_contrib = max(contributions.values())
-                    additional = highest_contrib - contributions[player_name]
-                    if additional > 0:
-                        pot_size += additional
-                        contributions[player_name] = highest_contrib
-                        bet_amount = highest_contrib
+                    if current_bet > player_contribution:
+                        additional = current_bet - player_contribution
+                        bet_amount = current_bet
                     else:
-                        # This is a check
+                        # This is a check - no additional money
                         bet_amount = 0
+                        
                 elif action_type == "cbr":
                     core_action = Action.RAISE
                     amount_int = int(amount) if amount else 0
-                    additional = amount_int - contributions[player_name]
-                    pot_size += additional
-                    contributions[player_name] = amount_int
+                    additional = amount_int - player_contribution
                     bet_amount = amount_int
+                    current_bet = amount_int
+                
+                pot_size += additional
+                
+                if bet_amount is not None and bet_amount > 0:
+                    stage_contributions[current_stage][player_name] = bet_amount
+                
+                total_contribution = 0
+                for stage in ["PREFLOP", "FLOP", "TURN", "RIVER"]:
+                    if stage == current_stage:
+                        # For current stage, use contribution before this action
+                        total_contribution += player_contribution
+                    else:
+                        total_contribution += stage_contributions[stage][player_name]
                 
                 # Record the action if it's a recognized betting action
                 if core_action is not None:
@@ -359,11 +390,16 @@ class GameStateBuilder:
                         "player": player_name,
                         "action": core_action,
                         "amount": bet_amount,
-                        "contribution": contributions[player_name],  # Total contributed so far
-                        "pot_before": pot_size - (additional if 'additional' in locals() else 0),
+                        "stage_contribution": stage_contributions[current_stage][player_name],  
+                        "total_contribution": total_contribution + additional, 
+                        "pot_before": pot_before,
                         "pot_after": pot_size,
+                        "min_bet_to_continue": min_bet_to_continue,  
+                        "current_bet": current_bet,  
                         "action_idx": action_idx
                     })
+        
+        result["stage_contributions"] = stage_contributions
         
         # Record final stage transition
         result["stage_transitions"].append((current_stage, len(data["actions"])))
@@ -417,6 +453,7 @@ class GameStateBuilder:
     
     def build_player_gamestates(self, hand_data: str, target_player: str) -> List[GameState]:
         """Build GameState objects for a specific player's decision points"""
+        # Parse the hand data
         parsed_data = self.parse_hand(hand_data)
         
         # Find the target player's decision points
@@ -463,26 +500,30 @@ class GameStateBuilder:
             
             pot_size = player_action["pot_before"]
             
-
-            # Find the highest contribution so far
+  
+            current_stage_actions = parsed_data["actions_by_stage"].get(stage_name, [])
             highest_contribution = 0
-            for stage_actions in parsed_data["actions_by_stage"].values():
-                for act in stage_actions:
-                    if act["action_idx"] < action_idx and act["action"] != Action.FOLD and act["amount"] is not None:
-                        highest_contribution = max(highest_contribution, act["amount"])
+            for act in current_stage_actions:
+                if act["action_idx"] < action_idx and act["action"] != Action.FOLD and act["amount"] is not None:
+                    highest_contribution = max(highest_contribution, act["amount"])
             
-            # The minimum to continue is the highest contribution minus what this player already put in
             target_player_contribution = 0
-            for stage_actions in parsed_data["actions_by_stage"].values():
-                for act in stage_actions:
-                    if act["action_idx"] < action_idx and act["player"] == target_player and act["amount"] is not None:
-                        target_player_contribution += act["amount"]
+            for act in current_stage_actions:
+                if act["action_idx"] < action_idx and act["player"] == target_player and act["amount"] is not None:
+                    target_player_contribution += act["amount"]
+            
+
+            if stage_name == "PREFLOP":
+                initial_bet = parsed_data.get("min_bet")
+                if initial_bet is None:
+                    initial_bet = max(parsed_data.get("blinds_or_straddles", [0]))
+                if highest_contribution < initial_bet:
+                    highest_contribution = initial_bet
             
             min_bet_to_continue = highest_contribution - target_player_contribution
             if min_bet_to_continue < 0:
                 min_bet_to_continue = 0  
             
-            # Calculate current stack size - starting with blind-adjusted stack from player_stacks
             current_stack = parsed_data["player_stacks"][target_player]
             
             
@@ -491,7 +532,6 @@ class GameStateBuilder:
                 for act in stage_actions:
                     if act["action_idx"] < action_idx and act["player"] == target_player:
                         if act["action"] == Action.CHECK_CALL and act["amount"] is not None:
-
                             blinds = 0
                             if target_player in parsed_data["player_list"]:
                                 player_idx = parsed_data["player_list"].index(target_player)
@@ -613,13 +653,12 @@ class GameStateBuilder:
                                 if other_player_has_acted["PREFLOP"] and other_player_has_acted["FLOP"] and other_player_has_acted["TURN"]:
                                     other_player.add_river_action(player_action_in_stage["action"], player_action_in_stage["amount"])
                     
-                    # Process current stage - only for players who already acted BEFORE current player's turn
+                    # Process current stage - only for players who already acted BEFORE target player's turn
                     if stage_name in parsed_data["actions_by_stage"]:
                         # Get this player's action order in the current stage
                         player_turn_order = self._get_player_turn_order(player_spots_from_bb, stage_name)
                         target_player_turn_order = self._get_player_turn_order(target_player_spots_from_bb, stage_name)
                         
-                       
                         if player_turn_order < target_player_turn_order:
                             # Find the player's action in current stage
                             player_action_in_current_stage = None
@@ -671,6 +710,7 @@ class GameStateBuilder:
             # UTG is first to act
             if spots_from_bb == 1:
                 return 0
+            # SB acts next-to-last
             elif spots_from_bb == -1:  
                 return float('inf') - 1
             # BB acts last
@@ -703,7 +743,11 @@ class GameStateBuilder:
         
         # Pot and bet info
         lines.append(f"Pot size: {gamestate.pot_size}")
-        lines.append(f"Min bet to continue: {gamestate.min_bet_to_continue}")
+        
+        if gamestate.stage.name == "PREFLOP":
+            lines.append(f"Min bet to continue: {gamestate.min_bet_to_continue} (BB or match current bet)")
+        else:
+            lines.append(f"Min bet to continue: {gamestate.min_bet_to_continue}")
         
         # My player info
         lines.append(f"\nMy Player:")
