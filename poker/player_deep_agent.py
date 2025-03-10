@@ -62,9 +62,20 @@ class PlayerDeepAgent(Player):
                 # TODO(roberto): handle this in model and change this to an assert
                 if raise_amt < self.game.min_bet: # this is the big blind amount
                     # cannot raise, revert to check/call
+                    action = Action.CHECK_CALL
                     self.handle_check_call()
-                    return Action.CHECK_CALL
-            
-                self.handle_raise(raise_amt)
+                else:    
+                    self.handle_raise(raise_amt)
+        
+        stack_post_action = self.stack
+        action_amt = 0
+        if action == Action.CHECK_CALL:
+            action_amt = stack_pre_action - stack_post_action
+        elif action == Action.RAISE:
+            action_amt = raise_amt
+        
+        self.game.current_round_game_states[self][1].append(
+            (game_state, action_probs, raise_ratio, (action, action_amt))
+        )
         
         return action
