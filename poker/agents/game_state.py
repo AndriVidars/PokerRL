@@ -210,7 +210,7 @@ class GameStateBuilder:
         return data
     
     def _parse_value(self, value_str: str):
-        """Safely parse a value string into the appropriate Python data type"""
+        """Parse a value string into the appropriate Python data type"""
         if value_str == 'true':
             return True
         elif value_str == 'false':
