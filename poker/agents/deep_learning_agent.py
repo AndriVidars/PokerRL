@@ -13,6 +13,8 @@ from tqdm import tqdm
 import torch.optim as optim
 import pandas as pd
 import numpy as np
+from torch.distributions import Normal, Uniform
+
 
 class GameStateTensorDataset(Dataset):
     def __init__(self, data_list): self.data_list = data_list
@@ -21,6 +23,7 @@ class GameStateTensorDataset(Dataset):
 
 def collate_fn(batch):
     return tuple(torch.stack(tensors) for tensors in zip(*batch))
+
 class FFN(nn.Module):
     def __init__(self, idim, hdim, odim, n_hidden, use_batchnorm=False):
         super().__init__()
@@ -62,6 +65,38 @@ class STEClampFunction(torch.autograd.Function):
 def clamp_ste(input, min_val, max_val):
     return STEClampFunction.apply(input, min_val, max_val)
 
+class TruncatedNormal(torch.distributions.Distribution):
+    """
+    Truncated Normal distribution using inverse transform sampling.
+    """
+    def __init__(self, loc, scale, low, high, validate_args=None):
+        self._loc = loc
+        self._scale = scale
+        self.low = low
+        self.high = high
+        self.normal = Normal(loc, scale)
+        super().__init__(validate_args=validate_args)
+
+    def sample(self, sample_shape=torch.Size()):
+        shape = sample_shape if isinstance(sample_shape, torch.Size) else torch.Size([sample_shape])
+        cdf_low = self.normal.cdf(self.low)
+        cdf_high = self.normal.cdf(self.high)
+        u = Uniform(cdf_low, cdf_high).sample(shape)
+        return self.normal.icdf(u)
+
+    def log_prob(self, value):
+        log_prob = self.normal.log_prob(value)
+        norm_cdf_low = self.normal.cdf(self.low)
+        norm_cdf_high = self.normal.cdf(self.high)
+        normalization_factor = norm_cdf_high - norm_cdf_low
+        return log_prob - torch.log(normalization_factor)
+    
+    def __getitem__(self, idx):
+        return TruncatedNormal(self._loc[idx], self._scale[idx], low=self.low[idx], high=self.high[idx])
+    
+    def __repr__(self):
+        return f"TruncatedNormal(u={self._loc:4f}, sd={self._scale:4f}, low={self.low:4f}, high={self.high:4f})"
+
 class PokerPlayerNetV1(nn.Module):
     def __init__(self, use_batchnorm=False):
         super().__init__()
@@ -93,7 +128,7 @@ class PokerPlayerNetV1(nn.Module):
         self.gather_net = FFN(
             idim=60,
             hdim=30,
-            odim=4, # (fold,check/call,raise), raise size
+            odim=5, # (fold,check/call,raise), (raise_size_mean, raise_size_std)
             n_hidden=3,
             use_batchnorm=use_batchnorm,
         )
@@ -133,13 +168,15 @@ class PokerPlayerNetV1(nn.Module):
         ], dim=-1)
 
         out = self.gather_net(all_game_state)
-        action_logits = out[:, :-1]
-        raise_size = out[:, -1]
+        assert out.shape[1] == 5
+        action_logits = out[:, :3]
+        raise_size_mean = out[:, 3]
+        raise_size_std = torch.nn.functional.softplus(out[:, 4])
 
         raise_mask, min_allowed_raise, max_allowed_raise = self.get_mask_and_clamp(x_player_game)
+        action_logits = action_logits.clone()  # Ensure you don't modify in-place
         action_logits[:, 2] = action_logits[:, 2].masked_fill(raise_mask, -1e10)
-        raise_size = clamp_ste(raise_size, min_allowed_raise, max_allowed_raise)
-
+        raise_size = TruncatedNormal(raise_size_mean, raise_size_std, min_allowed_raise, max_allowed_raise)
         return action_logits, raise_size
 
     def get_actions(self, *args):
@@ -155,11 +192,11 @@ class PokerPlayerNetV1(nn.Module):
         should_raise = real_player_action == 2
         
         acc = (action == real_player_action).to(float).mean()
-        raise_size_mse = torch.tensor(0)
+        raise_size_loss = torch.tensor(0)
         if should_raise.any():
-            raise_size_mse = nn.functional.mse_loss(raise_size[should_raise], real_raise_size[should_raise])
+            raise_size_loss = -(raise_size[should_raise].log_prob(real_raise_size[should_raise])).mean()
 
-        return acc, raise_size_mse
+        return acc, raise_size_loss
 
     def run_eval(self, dl, device=None):
         self.eval()
@@ -188,7 +225,7 @@ class PokerPlayerNetV1(nn.Module):
         raise_loss = 0
         not_folded = real_player_action >= 2
         if torch.any(not_folded):
-            raise_loss = nn.functional.mse_loss(raise_size[not_folded], real_raise_size[not_folded])
+            raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
         loss = raise_loss + action_loss
         return loss
 
@@ -197,7 +234,7 @@ class PokerPlayerNetV1(nn.Module):
 
         train_losses = []
         valid_lossess = []
-        valid_metrics = {"action_acc":[], "raise_size_mse":[]}
+        valid_metrics = {"action_acc":[], "raise_size_loss":[]}
         steps = []
         _step = 0
         train_loss = 0
@@ -221,25 +258,40 @@ class PokerPlayerNetV1(nn.Module):
                     
                     if val_loader:
                         avg_val_loss, avg_val_action_acc, avg_val_raise_mse = self.run_eval(val_loader, device) 
-                        print(f"Validation Loss: {avg_val_loss:.4f}, avg_val_action_acc: {avg_val_action_acc:.4f}, avg_val_raise_size_mse: {avg_val_raise_mse}")
+                        print(f"Validation Loss: {avg_val_loss:.4f}, avg_val_action_acc: {avg_val_action_acc:.4f}, avg_val_raise_size_loss: {avg_val_raise_mse}")
                         valid_lossess.append(avg_val_loss)
                         valid_metrics["action_acc"].append(avg_val_action_acc)
-                        valid_metrics["raise_size_mse"].append(avg_val_raise_mse)
+                        valid_metrics["raise_size_loss"].append(avg_val_raise_mse)
                     
                 _step += 1
         return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps, **valid_metrics)).set_index("step")
 
-    def eval_game_state(self, game_state):
+
+    def eval_game_states(self, game_states):
         self.eval()
-        batch = self.game_state_to_batch(game_state)
+        batch = [self.game_state_to_batch(gs) for gs in game_states]
+        batch = collate_fn(batch)
         with torch.no_grad():
-            action_logits, raise_size = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))
+            action_logits, raise_size = self(batch[0], batch[1], batch[2])
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
-        
-        raise_size = raise_size[0]
-        action_logits = action_logits[0]
         return torch.softmax(action_logits, dim=-1), raise_size
+
+    def eval_game_state(self, game_state):
+        """
+        Returns a Tensor for action probabilities and a TruncatedNormal distribution for raise_size.
+        """
+        self.eval()
+        action_probs, raise_size = self.eval_game_states([game_state])
+        return action_probs[0], raise_size[0]
+
+    def get_log_probs(self, actions, raise_sizes, game_states):
+        # actions -> (B,) Tensor(int64)
+        # raise_size -> (B,) Tensor(float32)
+        action_probs_distr, raise_sizes_distr = self.eval_game_states(game_states)
+        action_log_probs = action_probs_distr.gather(1, actions.unsqueeze(1)).squeeze(1)
+        raise_log_probs = raise_sizes_distr.log_prob(raise_sizes)
+        return action_log_probs, raise_log_probs
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
