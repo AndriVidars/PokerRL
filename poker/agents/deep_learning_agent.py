@@ -88,6 +88,16 @@ class PokerPlayerNetV1(nn.Module):
         self.aggressiveness_call = 1.0 # agressiveness just controls probabilities
         self.aggressiveness_raise = 1.0 # agressiveness just controls probabilities
 
+    @torch.no_grad()
+    def get_mask_and_clamp(self, x_player_game):
+        # returns mask for action and max raise size
+        rel_stack_size = x_player_game[:, 1]
+        min_bet_to_continue = x_player_game[:, -1]
+        # TODO(roberto): fix this, should be: rel_stack_size <= (min_bet_to_continue + min_allowed_bet)
+        can_not_raise_mask = rel_stack_size <= min_bet_to_continue
+        max_allowed_raise = rel_stack_size
+        return can_not_raise_mask, max_allowed_raise
+
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
         # x_player_game : (B, 5)
         # x_acted_history : (B, 9, 3)
@@ -112,25 +122,11 @@ class PokerPlayerNetV1(nn.Module):
         action_logits = out[:, :-1]
         raise_size = out[:, -1]
 
-        return action_logits, raise_size
+        raise_mask, max_allowed_raise = self.get_mask_and_clamp(x_player_game)
+        action_logits[:, 2] = action_logits[:, 2].masked_fill(raise_mask, -1e10)
+        raise_size = torch.clamp_max(raise_size, max_allowed_raise)
 
-    def run_eval(self, dl, device=None):
-        self.eval()
-        val_loss = 0
-        val_action_acc = 0
-        val_raise_size_mse = 0
-        with torch.no_grad():
-            for batch in dl:
-                batch = tuple(t.to(device) for t in batch)
-                loss = self.compute_loss(batch)
-                action_acc, raise_loss = self.eval_acc_batch(batch)
-                val_loss += loss.item()
-                val_action_acc += action_acc.item()
-                val_raise_size_mse += raise_loss.item()
-        avg_val_loss = val_loss / len(dl)
-        avg_val_action_acc = val_action_acc / len(dl)
-        avg_val_raise_mse = val_raise_size_mse / len(dl)
-        return avg_val_loss, avg_val_action_acc, avg_val_raise_mse
+        return action_logits, raise_size
 
     def get_actions(self, *args):
         action, raise_size = self(*args)
@@ -150,6 +146,24 @@ class PokerPlayerNetV1(nn.Module):
             raise_size_mse = nn.functional.mse_loss(raise_size[should_raise], real_raise_size[should_raise])
 
         return acc, raise_size_mse
+
+    def run_eval(self, dl, device=None):
+        self.eval()
+        val_loss = 0
+        val_action_acc = 0
+        val_raise_size_mse = 0
+        with torch.no_grad():
+            for batch in dl:
+                batch = tuple(t.to(device) for t in batch)
+                loss = self.compute_loss(batch)
+                action_acc, raise_loss = self.eval_acc_batch(batch)
+                val_loss += loss.item()
+                val_action_acc += action_acc.item()
+                val_raise_size_mse += raise_loss.item()
+        avg_val_loss = val_loss / len(dl)
+        avg_val_action_acc = val_action_acc / len(dl)
+        avg_val_raise_mse = val_raise_size_mse / len(dl)
+        return avg_val_loss, avg_val_action_acc, avg_val_raise_mse
 
     def compute_loss(self, batch):
         x_player_game, x_acted_players, x_to_act_players, player_action = batch
@@ -211,11 +225,6 @@ class PokerPlayerNetV1(nn.Module):
         
         raise_size = raise_size[0]
         action_logits = action_logits[0]
-        
-        # making actions 
-        raise_size = torch.minimum(raise_size, torch.tensor(game_state.my_player.stack_size / game_state.pot_size))
-        if game_state.my_player.stack_size == 0: # can not raise
-            action_logits[2] = -1e10
         return torch.softmax(action_logits, dim=-1), raise_size
 
     @staticmethod
@@ -228,6 +237,7 @@ class PokerPlayerNetV1(nn.Module):
         hand_rank = state.get_hand_strength()
         c_hand_rank = state.get_community_hand_strength()
         rel_min_bet = state.min_bet_to_continue / state.pot_size
+        # BE CAREFUL CHANGING VALUES IN x_player_game, THIS TENSOR IS INDEXED ELSEWHERE IN THIS CODE
         x_player_game = torch.Tensor([state.stage.value, rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
 
         # separate acted and non-acted players
@@ -243,14 +253,16 @@ class PokerPlayerNetV1(nn.Module):
         acted_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
                 t, #t, # turn to act
-                0 if not p.history else p.history[-1][1] / state.pot_size, # raise_size TODO(roberto): consider using something better NOTE andri change
+                # TODO (roberto) remove 0's here, all players that acted before should have history
+                0 if not p.history else p.history[-1][1] / state.pot_size,
             ) for p, t in acted_players
         ]
         # Construct to-act players state, only if not in preflop
         to_act_players_data = [(
                 p.stack_size / state.pot_size, # rel stack size
                 t, #, # turn to act
-                p.history[-1][1] / state.pot_size if p.history else 0, # raise_size TODO(roberto): consider using something better
+                # TODO (roberto) remove 0's here, all players that acted before should have history
+                p.history[-1][1] / state.pot_size if p.history else 0,
             ) for p, t in to_act_players
         ] if state.stage != Stage.PREFLOP else []
 
