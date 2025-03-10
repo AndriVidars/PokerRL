@@ -56,7 +56,7 @@ class PokerPlayerNetV1(nn.Module):
 
         self.stage_embed = nn.Embedding(4, 10)
         self.player_game_net = FFN(
-            idim=6, # stage, stack_size, turn_to_act, hand_rank, c_hand_rank, min_bet
+            idim=7, # stage, stack_size, min_allowed_bet, turn_to_act, hand_rank, c_hand_rank, min_bet
             hdim=10,
             odim=10,
             n_hidden=2,
@@ -92,9 +92,9 @@ class PokerPlayerNetV1(nn.Module):
     def get_mask_and_clamp(self, x_player_game):
         # returns mask for action and max raise size
         rel_stack_size = x_player_game[:, 1]
+        min_allowed_bet = x_player_game[:, 2]
         min_bet_to_continue = x_player_game[:, -1]
-        # TODO(roberto): fix this, should be: rel_stack_size <= (min_bet_to_continue + min_allowed_bet)
-        can_not_raise_mask = rel_stack_size <= min_bet_to_continue
+        can_not_raise_mask = rel_stack_size <= (min_bet_to_continue + min_allowed_bet)
         max_allowed_raise = rel_stack_size
         return can_not_raise_mask, max_allowed_raise
 
@@ -237,8 +237,9 @@ class PokerPlayerNetV1(nn.Module):
         hand_rank = state.get_hand_strength()
         c_hand_rank = state.get_community_hand_strength()
         rel_min_bet = state.min_bet_to_continue / state.pot_size
+        rel_min_allowed_bet = state.min_allowed_bet / state.pot_size
         # BE CAREFUL CHANGING VALUES IN x_player_game, THIS TENSOR IS INDEXED ELSEWHERE IN THIS CODE
-        x_player_game = torch.Tensor([state.stage.value, rel_stack_size, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
+        x_player_game = torch.Tensor([state.stage.value, rel_stack_size, rel_min_allowed_bet, turn_to_act, hand_rank, c_hand_rank, rel_min_bet])
 
         # separate acted and non-acted players
         acted_players = [(player, turn) for player, turn in

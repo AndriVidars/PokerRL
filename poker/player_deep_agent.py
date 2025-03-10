@@ -59,14 +59,8 @@ class PlayerDeepAgent(Player):
                 # the game environment treats raise as betting the call amount + an additional amount(raise amount)
                 # this makes some adjustment so that the agent doesnt violate the environment
                 raise_amt -= game_state.min_bet_to_continue
-                
-                # TODO(roberto): handle this in model and change this to an assert
-                if raise_amt < self.game.min_bet: # this is the big blind amount
-                    # cannot raise, revert to check/call
-                    action = Action.CHECK_CALL
-                    self.handle_check_call()
-                else:    
-                    self.handle_raise(raise_amt)
+                assert raise_amt >= self.game.min_bet
+                self.handle_raise(raise_amt)
         
         stack_post_action = self.stack
         action_amt = 0
