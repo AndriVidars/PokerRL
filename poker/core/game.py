@@ -285,9 +285,6 @@ class Game:
             pre_stack, game_states = v
             post_stack = p.stack
             stack_delta = (post_stack - pre_stack) / pre_stack
-            if stack_delta > 1:
-                stack_delta -= 1
-            
             self.game_state_batches[p].append((pre_stack, post_stack, stack_delta, game_states))
 
         # reset for next round
