@@ -55,18 +55,18 @@ class PlayerDeepAgent(Player):
             case Action.RAISE:
                 # model outputs raise proportional to current pot(entire pot, not just within round bets?)
                 raise_amt = int(game_state.pot_size * raise_ratio)
+                assert raise_amt <= self.stack, "insufficient funds"
                 
                 # the game environment treats raise as betting the call amount + an additional amount(raise amount)
                 # this makes some adjustment so that the agent doesnt violate the environment
-                if raise_amt + game_state.min_bet_to_continue > self.stack:
-                     # or should this maybe always be subtracted(with current setup of the agent)? 
-                    raise_amt -= game_state.min_bet_to_continue
-                    
+                raise_amt -= game_state.min_bet_to_continue
+                
+                # TODO(roberto): handle this in model and change this to an assert
                 if raise_amt < self.game.min_bet: # this is the big blind amount
                     # cannot raise, revert to check/call
                     self.handle_check_call()
                     return Action.CHECK_CALL
-                
+            
                 self.handle_raise(raise_amt)
         
         return action
