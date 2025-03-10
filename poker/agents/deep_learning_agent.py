@@ -67,7 +67,7 @@ def clamp_ste(input, min_val, max_val):
 
 class TruncatedNormal(torch.distributions.Distribution):
     """
-    Truncated Normal distribution using inverse transform sampling.
+    Normal distribution with truncated sampling
     """
     def __init__(self, loc, scale, low, high, validate_args=None):
         self._loc = loc
@@ -78,18 +78,11 @@ class TruncatedNormal(torch.distributions.Distribution):
         super().__init__(validate_args=validate_args)
 
     def sample(self, sample_shape=torch.Size()):
-        shape = sample_shape if isinstance(sample_shape, torch.Size) else torch.Size([sample_shape])
-        cdf_low = self.normal.cdf(self.low)
-        cdf_high = self.normal.cdf(self.high)
-        u = Uniform(cdf_low, cdf_high).sample(shape)
-        return self.normal.icdf(u)
+        res = self.normal.sample(sample_shape=sample_shape)
+        return torch.clamp(res, self.low, self.high)
 
     def log_prob(self, value):
-        log_prob = self.normal.log_prob(value)
-        norm_cdf_low = self.normal.cdf(self.low)
-        norm_cdf_high = self.normal.cdf(self.high)
-        normalization_factor = norm_cdf_high - norm_cdf_low
-        return log_prob - torch.log(normalization_factor)
+        return self.normal.log_prob(value)
     
     def __getitem__(self, idx):
         return TruncatedNormal(self._loc[idx], self._scale[idx], low=self.low[idx], high=self.high[idx])
@@ -226,7 +219,7 @@ class PokerPlayerNetV1(nn.Module):
         not_folded = real_player_action >= 2
         if torch.any(not_folded):
             raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
-        loss = raise_loss + action_loss
+        loss = raise_loss + 2*action_loss
         return loss
 
     def train_model(self, train_loader, val_loader=None, num_epochs=10, lr=1e-3, device=None, eval_steps=100):
