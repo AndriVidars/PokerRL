@@ -24,7 +24,8 @@ class PlayerDeepAgent(Player):
             min_bet_to_continue = self.get_call_amt_due(), # see how this is implemented, are we on the same page
             my_player = self.game.game_state_players[self],
             other_players = [copy.deepcopy(v) for k, v in self.game.game_state_players.items() if k != self],
-            my_player_action=None
+            my_player_action=None,
+            min_allowed_bet=self.game.min_bet,
         )
 
         # hide cards

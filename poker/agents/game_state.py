@@ -62,6 +62,7 @@ class Player():
     def __str__(self):
         res = ""
         res += f"in_game: {self.in_game}\n"
+        res += f"stack_size: {self.stack_size}\n"
         res += f"spots_left_bb: {self.spots_left_bb}\n"
         res += f"cards: {self.cards}\n"
         res += f"history: {self.history}\n"
@@ -81,6 +82,7 @@ class GameState():
             other_players: List[Player],
             # action the player took in practice
             my_player_action: Tuple[Action, int] | None,
+            min_allowed_bet: int,
     ):
         self.community_cards = community_cards
         self.pot_size = pot_size
@@ -89,6 +91,7 @@ class GameState():
         self.my_player = my_player
         self.other_players = other_players
         self.my_player_action = my_player_action
+        self.min_allowed_bet = min_allowed_bet
 
     @staticmethod
     def compute_hand_strength(cards: List[Card]):
@@ -695,7 +698,8 @@ class GameStateBuilder:
                 min_bet_to_continue=min_bet_to_continue,
                 my_player=my_player,
                 other_players=other_players,
-                my_player_action=(player_action["action"], player_action["amount"])
+                my_player_action=(player_action["action"], player_action["amount"]),
+                min_allowed_bet=100, # TODO(Abi/Roberto) undo this hardcoding, the minimum allowed bet is the size of a big blind
             )
             
             gamestates.append(gamestate)
