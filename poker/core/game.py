@@ -101,7 +101,7 @@ class Game:
         return next_idx
 
     def betting_loop(self):
-        if len(self.active_players) == 1:
+        if len(self.active_players) <= 1:
             return
         
         match self.current_stage:
@@ -117,10 +117,6 @@ class Game:
         while init_player_idx != curr_player_idx: # full round around table form first action(non-fold)d
             curr_player = self.players[curr_player_idx]
             action = curr_player.act()
-            if self.verbose:
-                print(f"Player {curr_player}, Action: {action}")
-                if curr_player.all_in:
-                    print(f"Player: {curr_player} is now ALL IN")
 
             if action == Action.RAISE:
                 if not curr_player.all_in:
@@ -133,8 +129,11 @@ class Game:
                 init_player_idx = curr_player_idx
             
             
-            if len(self.active_players) == 1:
+            if len(self.active_players) == 1 and init_player_idx != -1:
                 break
+
+            if len(self.active_players) == 0:
+                break # this can happen if player folds in head to head after re-raise
 
             curr_player_idx = self.next_player(curr_player_idx) # next player
 
@@ -174,9 +173,9 @@ class Game:
             print(f"big: {big_player}")
 
             if small_player.all_in:
-                print(f"Player: {small_player} is now ALL IN")
+                print(f"{small_player} is now ALL IN")
             if big_player.all_in:
-                print(f"Player: {big_player} is now ALL IN")
+                print(f"{big_player} is now ALL IN")
      
     def preflop(self):
         if self.verbose:
@@ -237,6 +236,14 @@ class Game:
 
     
     def decide_pot(self):
+        if self.verbose and self.community_cards:
+            print('\n')
+            print(f"Community cards at end of round: {self.community_cards}")
+            print(f"Player(non-folded) hands at pot decider:")
+            for p in self.players:
+                if not p.folded:
+                    print(f"{p}, hand: {p.hand}")
+        
         # this concludes every round
         self.rounds_played += 1
         player_hands_rankings = {}
@@ -294,10 +301,10 @@ class Game:
                 self.players_eliminated.append((p, self.rounds_played))
                 self.players.remove(p)
                 if self.verbose:
-                    print(f"Player {p} has been eliminated")
+                    print(f"{p} has been eliminated")
             else:
                 if self.verbose:
-                    print(f"Player: {p} stack after {self.rounds_played} rounds: {p.stack}")
+                    print(f"{p}, stack after {self.rounds_played} rounds: {p.stack}")
                 p.folded = False
                 p.all_in = False
                 p.hand = []

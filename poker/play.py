@@ -30,8 +30,9 @@ if __name__ == '__main__':
 
     # setup of each game, number of players of each type
     player_type_dict = {
-        PlayerRandom: 2,
-        PlayerDeepAgent: 2
+        PlayerHeuristic: 2,
+        PlayerDeepAgent: 2,
+        #PlayerRandom: 2,
     }
 
 

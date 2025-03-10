@@ -24,7 +24,11 @@ class PlayerHeuristic(Player):
             case Action.CHECK_CALL:
                 self.handle_check_call()
             case Action.RAISE:
-                self.handle_raise(raise_amt)
+                if len(self.game.active_players) == 1:
+                    self.handle_check_call() # revert to check/call, raise is not an option
+                    action = Action.CHECK_CALL
+                else:
+                    self.handle_raise(raise_amt)
 
         return action
     

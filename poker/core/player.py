@@ -46,15 +46,20 @@ class Player(ABC):
         if action == Action.FOLD:
             self.folded = True
             self.game.game_state_players[self].history.append((Action.FOLD, 0))
+            if self.game.verbose:
+                print(f"{self}, {(action, 0)}")
         elif action == Action.CHECK_CALL:
             self.game.game_state_players[self].history.append((Action.CHECK_CALL, stack_diff))
+            if self.game.verbose:
+                print(f"{self}, {(action, stack_diff)}")
+
         # NOTE for the raise action history is added inside the handle_raise
 
         # this is also controlled in other places(where it matters in loop)
         if self.stack == 0:
             self.all_in == True
             if self.game.verbose:
-                print(f"Player: {self} is All In")
+                print(f"{self} is now All IN")
 
         if self.folded or self.all_in:
             self.game.active_players.remove(self)
@@ -119,7 +124,8 @@ class Player(ABC):
         pot.add_contribution(self, raise_amt)
         self.game.pots.append(pot)
         self.game.game_state_players[self].history.append((Action.RAISE, raise_amt))
-
+        if self.game.verbose:
+                print(f"{self}, {(Action.RAISE, raise_amt)}")
 
     def get_call_amt_due(self):
         pots = self.game.pots

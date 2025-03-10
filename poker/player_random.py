@@ -8,7 +8,7 @@ class PlayerRandom(Player):
     def _act(self):
         max_raise_amt = self.max_raise_amount()
         actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]
-        if max_raise_amt < self.game.min_bet:
+        if max_raise_amt < self.game.min_bet or len(self.game.active_players) == 1:
             actions.pop() # cannot raise
         
         if self.get_call_amt_due() == 0:

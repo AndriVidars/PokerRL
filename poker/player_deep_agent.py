@@ -52,15 +52,20 @@ class PlayerDeepAgent(Player):
             case Action.CHECK_CALL:
                 self.handle_check_call()
             case Action.RAISE:
-                # model outputs raise proportional to current pot(entire pot, not just within round bets?)
-                raise_amt = round(game_state.pot_size * raise_ratio)
-                assert raise_amt <= self.stack, "insufficient funds"
-                
-                # the game environment treats raise as betting the call amount + an additional amount(raise amount)
-                # this makes some adjustment so that the agent doesnt violate the environment
-                raise_amt -= game_state.min_bet_to_continue
-                assert raise_amt >= self.game.min_bet
-                self.handle_raise(raise_amt)
+                # HACK for re-raise situation TODO(roberto), maybe mask this in the agent so that the if else wrapping is not needed
+                if len(self.game.active_players) == 1:
+                    self.handle_check_call()
+                    action = Action.CHECK_CALL
+                else:
+                    # model outputs raise proportional to current pot(entire pot, not just within round bets?)
+                    raise_amt = round(game_state.pot_size * raise_ratio)
+                    assert raise_amt <= self.stack, "insufficient funds"
+
+                    # the game environment treats raise as betting the call amount + an additional amount(raise amount)
+                    # this makes some adjustment so that the agent doesnt violate the environment
+                    raise_amt -= game_state.min_bet_to_continue
+                    assert raise_amt >= self.game.min_bet
+                    self.handle_raise(raise_amt)
         
         stack_post_action = self.stack
         action_amt = 0

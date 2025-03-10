@@ -179,3 +179,4 @@ cython_debug/
 *.pkl
 
 test_copy.ipynb
+game_log.txt
