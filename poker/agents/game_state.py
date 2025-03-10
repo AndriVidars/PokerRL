@@ -25,7 +25,7 @@ class Player():
     def __init__(self,
         spots_left_bb: int, # how many seats to the left is player from bb
         cards: Tuple[Card, Card] | None, # None if not visible
-        stack_size: int,
+        stack_size: int
     ):
         self.spots_left_bb = spots_left_bb
         self.cards = cards

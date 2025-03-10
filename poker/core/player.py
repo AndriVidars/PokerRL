@@ -33,18 +33,21 @@ class Player(ABC):
         pass
     
     def act(self) -> Action:
+        stack_pre_acttion = self.stack
         action = self._act()
-        self.post_act_hook(action) 
+        stack_post_action = self.stack
+        self.post_act_hook(action, stack_pre_acttion-stack_post_action) 
+
         return action
     
-    def post_act_hook(self, action):
+    def post_act_hook(self, action, stack_diff):
         self.game.game_state_players[self].stack_size = self.stack
 
         if action == Action.FOLD:
             self.folded = True
             self.game.game_state_players[self].history.append((Action.FOLD, 0))
         elif action == Action.CHECK_CALL:
-            self.game.game_state_players[self].history.append((Action.CHECK_CALL, 0))
+            self.game.game_state_players[self].history.append((Action.CHECK_CALL, stack_diff))
         # NOTE for the raise action history is added inside the handle_raise
 
         # this is also controlled in other places(where it matters in loop)

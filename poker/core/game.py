@@ -8,6 +8,7 @@ from poker.core.action import Action
 import poker.core.hand_evaluator as hand_eval
 from typing import Optional, List, Set
 from poker.agents.game_state import Player as GameStatePlayer
+from poker.player_deep_agent import PlayerDeepAgent
 
 
 class Game:
@@ -25,6 +26,10 @@ class Game:
         self.deck: Optional[Deck] = None 
         self.active_players:Optional[Set[Player]] = set(self.players) # active players in each round - not all in or folded
         self.game_state_players = {} # this is only used for the deep RL player
+        
+        # Player -> list of tuples(round number, list of game states with actions within round, relative stack delta from round)
+        self.game_state_batches = {p: [] for p in self.players if type(p) == PlayerDeepAgent} # only collecting the game states for the RL players, because we are not computing them for other players before taking actions
+        self.current_round_game_states = None
 
         self.game_completed = False
         self.rounds_played = 0
@@ -74,7 +79,7 @@ class Game:
                 self.game_completed = True
                 if self.verbose:
                     print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
-                return (self.players[0], self.rounds_played, self.players_eliminated)
+                return self.players[0], self.rounds_played, self.players_eliminated, self.game_state_batches
 
     # for deep agent only
     def pos_from_big_blind(self, player: Player):
@@ -178,8 +183,9 @@ class Game:
             print(f"\n{25*'-'}\nPreflop\n{25*'-'}\n")
 
         self.handle_blinds()
-        self.active_players = set([p for p in self.players if not p.all_in])
-
+        self.active_players = set([p for p in self.players if not p.all_in]) # no players folded after blinds
+        self.current_round_game_states = {p:(p.stack, []) for p in self.active_players if type(p) == PlayerDeepAgent}
+        
         self.deck = Deck()
         for _ in range(2):
             for p in self.players:
@@ -231,8 +237,8 @@ class Game:
 
     
     def decide_pot(self):
-        self.rounds_played += 1
         # this concludes every round
+        self.rounds_played += 1
         player_hands_rankings = {}
         for p in self.players:
             if not p.folded:
@@ -273,7 +279,16 @@ class Game:
             # Give remainder to first player
             if remainder > 0 and tied_players:
                 tied_players[0].stack += remainder
-
+        
+        
+        for p, v in self.current_round_game_states.items():
+            pre_stack, game_states = v
+            post_stack = p.stack
+            stack_delta = (post_stack - pre_stack) / pre_stack
+            if stack_delta > 1:
+                stack_delta -= 1
+            
+            self.game_state_batches[p].append((pre_stack, post_stack, stack_delta, game_states))
 
         # reset for next round
         players = list(self.players)

@@ -23,13 +23,14 @@ def init_players(player_type_dict, start_stack=400):
 
 if __name__ == '__main__':
     st = time.time()
-    n_games = 5000
+    n_games = 1000
     winner_stats = []
     eliminated_stats = []
+    game_state_batches = []
 
     # setup of each game, number of players of each type
     player_type_dict = {
-        PlayerHeuristic: 2,
+        PlayerRandom: 2,
         PlayerDeepAgent: 2
     }
 
@@ -39,7 +40,7 @@ if __name__ == '__main__':
         random.shuffle(players)
 
         game = Game(players, 10, 5, verbose=False) # NOTE set verbose true for detailed print logging of actions and results
-        winner, rounds_total, eliminated = game.gameplay_loop()
+        winner, rounds_total, eliminated, game_state_batch = game.gameplay_loop()
         winner_stats.append((winner.__class__.__name__, rounds_total))
         for e in eliminated:
             eliminated_stats.append(
@@ -49,12 +50,23 @@ if __name__ == '__main__':
                     e[1] / rounds_total
                 )                    
             )
+
+        game_state_batches.append(game_state_batch)
     
     et = time.time()
     elapased_time = et-st
     print(f"Total time: {elapased_time:.4f}, time per game: {elapased_time/n_games:.4f}")
 
-    fname = f'stats_{playrs_str}_{n_games}_.pkl'
+    fname_stats = f'stats_{playrs_str}_{n_games}.pkl'
+    fname_batches = f'game_state_batches_{playrs_str}_{n_games}.pkl'
 
-    with open(fname, 'wb') as f:
+    with open(fname_stats, 'wb') as f:
         pickle.dump((winner_stats, eliminated_stats), f)
+    
+
+    if game_state_batches:
+        # HACK, can't unpickle if I use Player as key in dict for some reason
+        gsb = [{f"{k.__class__.__name__}_{k.name}": v for k, v in gb.items()} for gb in game_state_batches]
+
+        with open(fname_batches, 'wb') as f:
+            pickle.dump(gsb, f)
