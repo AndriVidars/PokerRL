@@ -50,6 +50,18 @@ class FFN(nn.Module):
             else: x = layer(x)
         return x
 
+class STEClampFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, min_val, max_val):
+        return input.clamp(min_val, max_val)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None, None
+
+def clamp_ste(input, min_val, max_val):
+    return STEClampFunction.apply(input, min_val, max_val)
+
 class PokerPlayerNetV1(nn.Module):
     def __init__(self, use_batchnorm=False):
         super().__init__()
@@ -94,9 +106,11 @@ class PokerPlayerNetV1(nn.Module):
         rel_stack_size = x_player_game[:, 1]
         min_allowed_bet = x_player_game[:, 2]
         min_bet_to_continue = x_player_game[:, -1]
-        can_not_raise_mask = rel_stack_size <= (min_bet_to_continue + min_allowed_bet)
+        min_allowed_raise = min_bet_to_continue + min_allowed_bet
         max_allowed_raise = rel_stack_size
-        return can_not_raise_mask, max_allowed_raise
+        
+        can_not_raise_mask = rel_stack_size <= min_allowed_raise
+        return can_not_raise_mask, min_allowed_raise, max_allowed_raise
 
     def forward(self, x_player_game, x_acted_history, x_to_act_history):
         # x_player_game : (B, 5)
@@ -122,9 +136,9 @@ class PokerPlayerNetV1(nn.Module):
         action_logits = out[:, :-1]
         raise_size = out[:, -1]
 
-        raise_mask, max_allowed_raise = self.get_mask_and_clamp(x_player_game)
+        raise_mask, min_allowed_raise, max_allowed_raise = self.get_mask_and_clamp(x_player_game)
         action_logits[:, 2] = action_logits[:, 2].masked_fill(raise_mask, -1e10)
-        raise_size = torch.clamp_max(raise_size, max_allowed_raise)
+        raise_size = clamp_ste(raise_size, min_allowed_raise, max_allowed_raise)
 
         return action_logits, raise_size
 

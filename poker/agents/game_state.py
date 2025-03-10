@@ -92,6 +92,8 @@ class GameState():
         self.other_players = other_players
         self.my_player_action = my_player_action
         self.min_allowed_bet = min_allowed_bet
+        if self.my_player_action is not None and self.my_player_action[0] == Action.RAISE:
+            assert my_player_action[1] >= min_bet_to_continue + min_allowed_bet
 
     @staticmethod
     def compute_hand_strength(cards: List[Card]):
