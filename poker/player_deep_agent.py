@@ -10,7 +10,7 @@ import torch
 import copy
 
 class PlayerDeepAgent(Player):
-    def __init__(self, name, stack = 0, state_dict_dir="poker/a9e8c8.14060308.st"):
+    def __init__(self, name, stack = 0, state_dict_dir="poker/6afb9.02010310.st"):
         super().__init__(name, stack)
         self.agent = PokerPlayerNetV1(use_batchnorm=False)
         self.agent.load_state_dict(state_dict=torch.load(state_dict_dir))
@@ -53,7 +53,7 @@ class PlayerDeepAgent(Player):
                 self.handle_check_call()
             case Action.RAISE:
                 # model outputs raise proportional to current pot(entire pot, not just within round bets?)
-                raise_amt = int(game_state.pot_size * raise_ratio)
+                raise_amt = round(game_state.pot_size * raise_ratio)
                 assert raise_amt <= self.stack, "insufficient funds"
                 
                 # the game environment treats raise as betting the call amount + an additional amount(raise amount)
