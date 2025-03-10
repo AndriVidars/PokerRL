@@ -3,41 +3,37 @@ from poker.player_io import PlayerIO
 from poker.player_random import PlayerRandom
 from poker.player_heuristic import PlayerHeuristic
 from poker.player_deep_agent import PlayerDeepAgent
+from poker.agents.deep_learning_agent import PokerPlayerNetV1
+from poker.utils import init_players
 import time
 import pickle
 from tqdm import tqdm
 import random
-
-def init_players(player_type_dict, start_stack=400):
-    players = []
-    player_str_list = []
-    
-    for i, (player_class, count) in enumerate(player_type_dict.items()):
-        player_str_list.append(f"{player_class.__name__}_{count}")
-        for j in range(count):
-            player_name = f"{player_class.__name__} {i+1}_{j+1}"
-            players.append(player_class(player_name, start_stack))
-    
-    return players, "_".join(player_str_list)
+import torch
 
 
 if __name__ == '__main__':
     st = time.time()
-    n_games = 1000
+    n_games = 100
     winner_stats = []
     eliminated_stats = []
     game_state_batches = []
 
     # setup of each game, number of players of each type
     player_type_dict = {
-        PlayerHeuristic: 2,
+        #PlayerHeuristic: 2,
         PlayerDeepAgent: 2,
-        #PlayerRandom: 2,
+        PlayerRandom: 2,
     }
 
 
+    state_dict_dir = 'poker/6afb9.02010310.st'
+    agent_model = PokerPlayerNetV1(use_batchnorm=False)
+    agent_model.load_state_dict(state_dict=torch.load(state_dict_dir))
+
+
     for _ in tqdm(range(n_games)):
-        players, playrs_str = init_players(player_type_dict)
+        players, playrs_str = init_players(player_type_dict, agent_model=agent_model)
         random.shuffle(players)
 
         game = Game(players, 10, 5, verbose=False) # NOTE set verbose true for detailed print logging of actions and results
@@ -58,8 +54,8 @@ if __name__ == '__main__':
     elapased_time = et-st
     print(f"Total time: {elapased_time:.4f}, time per game: {elapased_time/n_games:.4f}")
 
-    fname_stats = f'stats_{playrs_str}_{n_games}.pkl'
-    fname_batches = f'game_state_batches_{playrs_str}_{n_games}.pkl'
+    fname_stats = f'pkl/stats_{playrs_str}_{n_games}.pkl'
+    fname_batches = f'pkl/game_state_batches_{playrs_str}_{n_games}.pkl'
 
     with open(fname_stats, 'wb') as f:
         pickle.dump((winner_stats, eliminated_stats), f)

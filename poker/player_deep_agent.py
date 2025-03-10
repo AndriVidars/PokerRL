@@ -6,14 +6,12 @@ from poker.agents.deep_learning_agent import PokerPlayerNetV1
 from poker.agents.game_state import Player as GameStatePlayer
 from poker.agents.game_state import GameState
 import numpy as np
-import torch
 import copy
 
 class PlayerDeepAgent(Player):
-    def __init__(self, name, stack = 0, state_dict_dir="poker/6afb9.02010310.st"):
+    def __init__(self, name, agent_model:PokerPlayerNetV1, stack = 0):
         super().__init__(name, stack)
-        self.agent = PokerPlayerNetV1(use_batchnorm=False)
-        self.agent.load_state_dict(state_dict=torch.load(state_dict_dir))
+        self.agent = agent_model
     
     def _act(self):
         stack_pre_action = self.stack
