@@ -192,7 +192,7 @@ class GameStateBuilder:
         for line in hand_data.strip().split('\n'):
             if '=' in line:
                 key, value = line.split('=', 1)
-                data[key.strip()] = self._safe_parse_value(value.strip())
+                data[key.strip()] = self._parse_value(value.strip())
         if not data:
             parts = hand_data.split(' ')
             current_key = None
@@ -200,16 +200,16 @@ class GameStateBuilder:
             for part in parts:
                 if '=' in part:
                     if current_key:
-                        data[current_key] = self._safe_parse_value(' '.join(current_value))
+                        data[current_key] = self._parse_value(' '.join(current_value))
                     current_key, value_start = part.split('=', 1)
                     current_value = [value_start]
                 elif current_key:
                     current_value.append(part)
             if current_key:
-                data[current_key] = self._safe_parse_value(' '.join(current_value))
+                data[current_key] = self._parse_value(' '.join(current_value))
         return data
     
-    def _safe_parse_value(self, value_str: str):
+    def _parse_value(self, value_str: str):
         """Safely parse a value string into the appropriate Python data type"""
         if value_str == 'true':
             return True
