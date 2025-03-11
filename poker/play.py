@@ -14,23 +14,22 @@ import torch
 
 if __name__ == '__main__':
     st = time.time()
-    n_games = 100
+    n_games = 5000
     winner_stats = []
     eliminated_stats = []
     game_state_batches = []
 
     # setup of each game, number of players of each type
     player_type_dict = {
-        #PlayerHeuristic: 2,
+        PlayerHeuristic: 2,
         PlayerDeepAgent: 2,
-        PlayerRandom: 2,
+        #PlayerRandom: 2,
     }
 
 
-    state_dict_dir = 'poker/6afb9.02010310.st'
+    state_dict_dir = 'poker/193c5c.05050310.st'
     agent_model = PokerPlayerNetV1(use_batchnorm=False)
     agent_model.load_state_dict(state_dict=torch.load(state_dict_dir))
-
 
     for _ in tqdm(range(n_games)):
         players, playrs_str = init_players(player_type_dict, agent_model=agent_model)

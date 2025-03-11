@@ -261,11 +261,10 @@ class PokerPlayerNetV1(nn.Module):
 
 
     def eval_game_states(self, game_states):
-        self.eval()
         batch = [self.game_state_to_batch(gs) for gs in game_states]
         batch = collate_fn(batch)
-        with torch.no_grad():
-            action_logits, raise_size = self(batch[0], batch[1], batch[2])
+        
+        action_logits, raise_size = self(batch[0], batch[1], batch[2])
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
         return torch.softmax(action_logits, dim=-1), raise_size
@@ -274,7 +273,6 @@ class PokerPlayerNetV1(nn.Module):
         """
         Returns a Tensor for action probabilities and a TruncatedNormal distribution for raise_size.
         """
-        self.eval()
         action_probs, raise_size = self.eval_game_states([game_state])
         return action_probs[0], raise_size[0]
 

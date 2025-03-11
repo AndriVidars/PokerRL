@@ -7,6 +7,7 @@ from poker.agents.game_state import Player as GameStatePlayer
 from poker.agents.game_state import GameState
 import numpy as np
 import copy
+import torch
 
 class PlayerDeepAgent(Player):
     def __init__(self, name, agent_model:PokerPlayerNetV1, stack = 0):
@@ -31,7 +32,12 @@ class PlayerDeepAgent(Player):
             op.cards = None
         
         game_state = copy.deepcopy(game_state) # HACK so that actions dont leak into the history before action is taken
-        action_probs, raise_ratio_dist = self.agent.eval_game_state(game_state)
+        
+        with torch.no_grad():
+            self.agent.eval()
+            action_probs, raise_ratio_dist = self.agent.eval_game_state(game_state)
+        self.agent.train()
+        
         raise_ratio = raise_ratio_dist.sample()
         # moving out of torch - do we need to do the following inside torch? for gradient updates?
 

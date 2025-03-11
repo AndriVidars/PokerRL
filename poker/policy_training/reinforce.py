@@ -44,10 +44,10 @@ def extract_game_states_and_actions(game_state_batch):
     return episodes
 
 
-def training_loop(player_type_dict, state_dict_dir='poker/6afb9.02010310.st', num_games=10_000, replay_buffer_cap = 10_000, batch_size = 16):
+def training_loop(player_type_dict, state_dict_dir='poker/193c5c.05050310.st', num_games=10_000, replay_buffer_cap=10_000, batch_size=16):
     # NOTE batch_size is in terms of number of trajectories, not number of actions, so the emperical batch size that is passed to get_log_probs is larger(#traj # action per traj)
     agent_model = PokerPlayerNetV1(use_batchnorm=False)
-    #agent_model.load_state_dict(state_dict=torch.load(state_dict_dir))
+    agent_model.load_state_dict(state_dict=torch.load(state_dict_dir))
     optimizer = optim.Adam(agent_model.parameters(), lr)
     replay_buffer = []
     
@@ -91,7 +91,7 @@ def training_loop(player_type_dict, state_dict_dir='poker/6afb9.02010310.st', nu
 
         action_log_probs, raise_log_progs = agent_model.get_log_probs(actions_tensor, raise_sizes_tensor, game_states)
 
-        loss = -rewards_tensor * (action_log_probs + raise_log_progs) # TODO verify
+        loss = (-rewards_tensor * (action_log_probs + raise_log_progs)).mean() # TODO verify
         optimizer.zero_grad()
         loss.backward() # TODO maybe add gradient clipping?
         optimizer.step()
