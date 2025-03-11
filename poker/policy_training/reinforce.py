@@ -5,12 +5,14 @@ from poker.player_heuristic import PlayerHeuristic
 from poker.player_deep_agent import PlayerDeepAgent
 from poker.agents.deep_learning_agent import PokerPlayerNetV1
 import torch
-from poker.utils import init_players
+from poker.utils import init_players, init_logging
 import torch.optim as optim
 from tqdm import tqdm
 import random
 from itertools import chain
 import pickle
+import logging
+from datetime import datetime
 
 # NOTE, need to tune and change this to run with different configs
 player_type_dict = {
@@ -22,7 +24,9 @@ player_type_dict = {
 start_stack_size = 400
 
 setup_str = '_'.join(f"{x.__name__}_{v}" for x, v in player_type_dict.items())
-log_file_path = f'poker/policy_training/logs/{setup_str}.log' # TODO log to file, not just print
+timestamp = datetime.now().strftime('%d%H_%M')
+log_file_path = f'poker/policy_training/logs/{setup_str}_{timestamp}.log' # TODO log to file, not just print
+init_logging(log_file_path)
 
 def extract_game_states_and_actions(game_state_batch):
     episodes = [] # list of tuples ((game states and actions), reward)
@@ -63,7 +67,12 @@ def training_loop(player_type_dict, state_dict_dir='poker/193c5c.05050310.st', n
         players, _ = init_players(player_type_dict, agent_model, start_stack_size)
 
         game = Game(players, 10, 5, verbose=False)
-        winner, _, _, game_state_batch = game.gameplay_loop()
+        try:
+            winner, _, _, game_state_batch = game.gameplay_loop()
+        except:
+            logging.exception("Error in gameplay loop")
+            raise
+        
         if type(winner) == PlayerDeepAgent:
             games_won[-1] += 1
 
@@ -102,7 +111,7 @@ def training_loop(player_type_dict, state_dict_dir='poker/193c5c.05050310.st', n
             win_rates.append(win_rate)
             games_won.append(0)
             if verbose:
-                print(f"Win Rate after {i+1} games: {win_rate:.4f}")
+                logging.info(f"Win Rate after {i+1} games: {win_rate:.4f}")
             
         if (i+1) % checkpoint_interval == 0:
             state_dict = agent_model.state_dict()
@@ -124,5 +133,5 @@ def dump_checkpoint(state_dict, f_name):
     
 
 if __name__ == '__main__':
-    training_loop(player_type_dict, num_games=10_000, metric_interval=100)
+    training_loop(player_type_dict, num_games=10_000, metric_interval=100, checkpoint_interval=1000) # TODO increase checkp interval
 
