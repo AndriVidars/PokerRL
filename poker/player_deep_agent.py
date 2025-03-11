@@ -31,7 +31,8 @@ class PlayerDeepAgent(Player):
             op.cards = None
         
         game_state = copy.deepcopy(game_state) # HACK so that actions dont leak into the history before action is taken
-        action_probs, raise_ratio = self.agent.eval_game_state(game_state)
+        action_probs, raise_ratio_dist = self.agent.eval_game_state(game_state)
+        raise_ratio = raise_ratio_dist.sample()
         # moving out of torch - do we need to do the following inside torch? for gradient updates?
 
         action_probs = action_probs.detach().numpy() # to cpu? for cuda?
