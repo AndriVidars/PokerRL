@@ -4,7 +4,7 @@ import logging
 def init_players(player_type_dict, agent_model_primary=None, agent_model_secondary=None, start_stack=400):
     players = []
     n = len(player_type_dict.keys())
-    for i, (player_class, (count, primary)) in enumerate(player_type_dict.items()):
+    for i, ((player_class, primary), count) in enumerate(player_type_dict.items()):
         for j in range(count):
             player_name = f"{player_class.__name__}{'_Primary_' if primary else '_'}{i*n+j}"
             if player_class == PlayerDeepAgent:

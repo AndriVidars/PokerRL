@@ -42,16 +42,15 @@ def main():
         if n == 0:
             continue
         if p_types[i] == 'H':
-            player_type_dict[PlayerHeuristic] = (n, False)
+            player_type_dict[(PlayerHeuristic, False)] = n
         elif p_types[i] == 'R':
-            player_type_dict[PlayerRandom] = (n, False)
+            player_type_dict[(PlayerRandom, False)] = n
         else:
-            player_type_dict[PlayerDeepAgent] = (n, p_types[i] == 'D')
+            player_type_dict[(PlayerDeepAgent, p_types[i] == 'D')] = n
 
         setup_str += f'{p_types[i]}{n}_'
     
     setup_str = setup_str[:-1]
-
     st = time.time()
     winner_stats = []
     eliminated_stats = []

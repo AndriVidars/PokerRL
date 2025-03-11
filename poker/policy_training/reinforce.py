@@ -62,7 +62,7 @@ def training_loop(player_type_dict, agent_model_primary:PokerPlayerNetV1, agent_
             # TODO if the Normal error occurs in forward, re-initialize the model from latest state dir and reset the optimizer accordingly
             raise
         
-        if type(winner) == PlayerDeepAgent and winner.agent == agent_model_primary:
+        if type(winner) == PlayerDeepAgent and winner.primary:
             games_won[-1] += 1
 
         game_states_episodes = extract_game_states_and_actions(game_state_batch)
@@ -159,11 +159,11 @@ def main():
         if n == 0:
             continue
         if p_types[i] == 'H':
-            player_type_dict[PlayerHeuristic] = (n, False)
+            player_type_dict[(PlayerHeuristic, False)] = n
         elif p_types[i] == 'R':
-            player_type_dict[PlayerRandom] = (n, False)
+            player_type_dict[(PlayerRandom, False)] = n
         else:
-            player_type_dict[PlayerDeepAgent] = (n, p_types[i] == 'D')
+            player_type_dict[(PlayerDeepAgent, p_types[i] == 'D')] = n
 
         setup_str += f'{p_types[i]}{n}_'
     
