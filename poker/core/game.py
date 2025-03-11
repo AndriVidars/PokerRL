@@ -79,7 +79,10 @@ class Game:
                 self.game_completed = True
                 if self.verbose:
                     print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
-                return self.players[0], self.rounds_played, self.players_eliminated, self.game_state_batches
+                
+                # for policy learning, only collect trajectory data for primary(on policy) players
+                game_state_batches_out = {k:v for k, v in self.game_state_batches.items() if k.primary}
+                return self.players[0], self.rounds_played, self.players_eliminated, game_state_batches_out
 
     # for deep agent only
     def pos_from_big_blind(self, player: Player):
