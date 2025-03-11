@@ -1,4 +1,6 @@
 from poker.player_deep_agent import PlayerDeepAgent
+import os
+import logging
 
 def init_players(player_type_dict, agent_model=None, start_stack=400):
     players = []
@@ -12,3 +14,11 @@ def init_players(player_type_dict, agent_model=None, start_stack=400):
             players.append(player)
     
     return players, "_".join(player_str_list)
+
+def init_logging(filename):
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
