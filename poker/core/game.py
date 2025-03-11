@@ -28,7 +28,12 @@ class Game:
         self.game_state_players = {} # this is only used for the deep RL player
         
         # Player -> list of tuples(round number, list of game states with actions within round, relative stack delta from round)
-        self.game_state_batches = {p: [] for p in self.players if type(p) == PlayerDeepAgent} # only collecting the game states for the RL players, because we are not computing them for other players before taking actions
+        # Initialize for both Deep Agent and PPO players
+        from poker.ppo_player import PlayerPPO
+        self.game_state_batches = {
+            p: [] for p in self.players 
+            if type(p) == PlayerDeepAgent or isinstance(p, PlayerPPO)
+        }
         self.current_round_game_states = None
 
         self.game_completed = False
@@ -183,7 +188,13 @@ class Game:
 
         self.handle_blinds()
         self.active_players = set([p for p in self.players if not p.all_in]) # no players folded after blinds
-        self.current_round_game_states = {p:(p.stack, []) for p in self.active_players if type(p) == PlayerDeepAgent}
+        
+        # Initialize game states for both PlayerDeepAgent and PPO players
+        from poker.ppo_player import PlayerPPO
+        self.current_round_game_states = {
+            p: (p.stack, []) for p in self.active_players 
+            if type(p) == PlayerDeepAgent or isinstance(p, PlayerPPO)
+        }
         
         self.deck = Deck()
         for _ in range(2):
@@ -288,11 +299,14 @@ class Game:
                 tied_players[0].stack += remainder
         
         
-        for p, v in self.current_round_game_states.items():
-            pre_stack, game_states = v
-            post_stack = p.stack
-            stack_delta = (post_stack - pre_stack) / pre_stack
-            self.game_state_batches[p].append((pre_stack, post_stack, stack_delta, game_states))
+        # Record game state for both deep agent and PPO players
+        if self.current_round_game_states:
+            for p, v in self.current_round_game_states.items():
+                if p in self.game_state_batches:  # Check if player is in batches
+                    pre_stack, game_states = v
+                    post_stack = p.stack
+                    stack_delta = (post_stack - pre_stack) / max(1, pre_stack)  # Avoid division by zero
+                    self.game_state_batches[p].append((pre_stack, post_stack, stack_delta, game_states))
 
         # reset for next round
         players = list(self.players)

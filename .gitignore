@@ -180,3 +180,5 @@ cython_debug/
 
 test_copy.ipynb
 game_log.txt
+
+poker/policy_training/checkpoints/**

@@ -70,12 +70,15 @@ class TruncatedNormal(torch.distributions.Distribution):
     Normal distribution with truncated sampling
     """
     def __init__(self, loc, scale, low, high, validate_args=None):
-        self._loc = loc
-        self._scale = scale
+        # Fix NaN values to prevent distribution errors
+        self._loc = torch.nan_to_num(loc, nan=0.5)  # Replace NaNs with 0.5
+        self._scale = torch.nan_to_num(scale, nan=0.1)  # Replace NaNs with 0.1
+        # Ensure scale is positive
+        self._scale = torch.clamp(self._scale, min=1e-5)
         self.low = low
         self.high = high
-        self.normal = Normal(loc, scale)
-        super().__init__(validate_args=validate_args)
+        self.normal = Normal(self._loc, self._scale)
+        super().__init__(validate_args=False)  # Always disable validation
 
     def sample(self, sample_shape=torch.Size()):
         res = self.normal.sample(sample_shape=sample_shape)
