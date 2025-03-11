@@ -3,7 +3,7 @@ from poker.player_io import PlayerIO
 from poker.player_random import PlayerRandom
 from poker.player_heuristic import PlayerHeuristic
 from poker.player_deep_agent import PlayerDeepAgent
-from poker.agents.deep_learning_agent import PokerPlayerNetV1
+from poker.agents.deep_learning_agent import PokerPlayerNetV1, clamp_ste
 import torch
 from poker.utils import init_players, init_logging
 import torch.optim as optim
@@ -94,9 +94,14 @@ def training_loop(player_type_dict, state_dict_dir='poker/193c5c.05050310.st', n
         raise_sizes_tensor =  torch.tensor([y for x in training_batch for y in x[0][1]])
         game_states = [y for x in training_batch for y in x[0][0]]
 
-        action_log_probs, raise_log_progs = agent_model.get_log_probs(actions_tensor, raise_sizes_tensor, game_states)
+        action_log_probs, raise_log_probs = agent_model.get_log_probs(actions_tensor, raise_sizes_tensor, game_states)
+        should_raise_mask = actions_tensor == 2
+        raise_log_probs = torch.where(should_raise_mask, raise_log_probs, torch.zeros_like(raise_log_probs))
 
-        loss = (-rewards_tensor * (action_log_probs + raise_log_progs)).mean() # TODO verify
+        # TODO(remove this when we do PPO, really small probabilities can only happen because of distribution shift?)
+        action_log_probs = torch.clamp_min(action_log_probs, torch.log(torch.tensor(0.01)))
+        raise_log_probs = torch.clamp_min(raise_log_probs, torch.log(torch.tensor(0.01)))
+        loss = (-rewards_tensor * (action_log_probs + raise_log_probs)).mean() # TODO verify
         optimizer.zero_grad()
         loss.backward()
         

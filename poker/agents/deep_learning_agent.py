@@ -128,6 +128,9 @@ class PokerPlayerNetV1(nn.Module):
         self.aggressiveness_call = 1.0 # agressiveness just controls probabilities
         self.aggressiveness_raise = 1.0 # agressiveness just controls probabilities
         self.use_mse_raise = use_mse_loss_for_raise
+        # init raise's std deviation weights
+        self.gather_net.net[-1].weight.data[4] = 0
+        self.gather_net.net[-1].bias.data[4] = 0.1
 
     @torch.no_grad()
     def get_mask_and_clamp(self, x_player_game):
@@ -273,13 +276,15 @@ class PokerPlayerNetV1(nn.Module):
         return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps, **valid_metrics)).set_index("step")
 
 
-    def eval_game_states(self, game_states):
+    def eval_game_states(self, game_states, log_action_probs=False):
         batch = [self.game_state_to_batch(gs) for gs in game_states]
         batch = collate_fn(batch)
 
         action_logits, raise_size = self(batch[0], batch[1], batch[2])
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
+        if log_action_probs:
+            return torch.log_softmax(action_logits, dim=-1), raise_size
         return torch.softmax(action_logits, dim=-1), raise_size
 
     def eval_game_state(self, game_state):
@@ -292,8 +297,8 @@ class PokerPlayerNetV1(nn.Module):
     def get_log_probs(self, actions, raise_sizes, game_states):
         # actions -> (B,) Tensor(int64)
         # raise_size -> (B,) Tensor(float32)
-        action_probs_distr, raise_sizes_distr = self.eval_game_states(game_states)
-        action_log_probs = action_probs_distr.gather(1, actions.unsqueeze(1)).squeeze(1)
+        action_log_probs, raise_sizes_distr = self.eval_game_states(game_states, log_action_probs=True)
+        action_log_probs = action_log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
         raise_log_probs = raise_sizes_distr.log_prob(raise_sizes)
         return action_log_probs, raise_log_probs
 
