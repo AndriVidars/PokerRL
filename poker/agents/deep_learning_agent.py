@@ -91,7 +91,7 @@ class TruncatedNormal(torch.distributions.Distribution):
         return f"TruncatedNormal(u={self._loc:4f}, sd={self._scale:4f}, low={self.low:4f}, high={self.high:4f})"
 
 class PokerPlayerNetV1(nn.Module):
-    def __init__(self, use_batchnorm=False):
+    def __init__(self, use_batchnorm=False, use_mse_loss_for_raise=False):
         super().__init__()
 
         self.stage_embed = nn.Embedding(4, 10)
@@ -127,6 +127,7 @@ class PokerPlayerNetV1(nn.Module):
         )
         self.aggressiveness_call = 1.0 # agressiveness just controls probabilities
         self.aggressiveness_raise = 1.0 # agressiveness just controls probabilities
+        self.use_mse_raise = use_mse_loss_for_raise
 
     @torch.no_grad()
     def get_mask_and_clamp(self, x_player_game):
@@ -187,7 +188,12 @@ class PokerPlayerNetV1(nn.Module):
         acc = (action == real_player_action).to(float).mean()
         raise_size_loss = torch.tensor(0)
         if should_raise.any():
-            raise_size_loss = -(raise_size[should_raise].log_prob(real_raise_size[should_raise])).mean()
+            if self.use_mse_raise:
+                raise_size = raise_size[should_raise]
+                raise_size = clamp_ste(raise_size._loc, raise_size.low, raise_size.high)
+                raise_size_loss = nn.functional.mse_loss(raise_size, real_raise_size[should_raise])
+            else:
+                raise_size_loss = -(raise_size[should_raise].log_prob(real_raise_size[should_raise])).mean()
 
         return acc, raise_size_loss
 
@@ -216,10 +222,17 @@ class PokerPlayerNetV1(nn.Module):
 
         action_loss = nn.functional.cross_entropy(action, real_player_action.to(torch.int64)) 
         raise_loss = 0
+        raise_loss_mult = 1
         not_folded = real_player_action >= 2
         if torch.any(not_folded):
-            raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
-        loss = raise_loss + 2*action_loss
+            if self.use_mse_raise:
+                raise_size = raise_size[not_folded]
+                raise_size = clamp_ste(raise_size._loc, raise_size.low, raise_size.high)
+                raise_loss = nn.functional.mse_loss(raise_size, real_raise_size[not_folded])
+            else:
+                raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
+                raise_loss_mult = 0.5
+        loss = raise_loss_mult*raise_loss + action_loss
         return loss
 
     def train_model(self, train_loader, val_loader=None, num_epochs=10, lr=1e-3, device=None, eval_steps=100):
@@ -263,7 +276,7 @@ class PokerPlayerNetV1(nn.Module):
     def eval_game_states(self, game_states):
         batch = [self.game_state_to_batch(gs) for gs in game_states]
         batch = collate_fn(batch)
-        
+
         action_logits, raise_size = self(batch[0], batch[1], batch[2])
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
