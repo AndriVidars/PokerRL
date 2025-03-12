@@ -18,7 +18,6 @@ import random
 from itertools import chain
 
 def extract_game_states_and_actions(game_state_batch):
-    """Extract game states, actions, and rewards from the game state batch"""
     episodes = []  # list of tuples ((game states, raise ratios, actions), stack_delta)
     
     # Iterate over game states for all players
@@ -114,44 +113,125 @@ def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=
     # Calculate advantages
     advantages = rewards - old_state_values
     
-    # Optimize policy for K epochs
-    total_loss = 0
+    # Initialize tracking of loss components
+    total_loss = 0.0
+    policy_losses = 0.0
+    value_losses = 0.0
+    entropy_losses = 0.0
     
     for _ in range(k_epochs):
-        # Evaluate current policy
-        logprobs_actions, logprobs_raises, state_values, dist_entropy = ppo_agent.policy.evaluate(
+        # Run forward pass through the policy network and get new action probabilities and values
+        logprobs_actions, logprobs_raises, state_values, dist_entropy = ppo_agent.policy.forward_and_evaluate(
             x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes
         )
         
-        # Calculate ratios
-        ratios_actions = torch.exp(logprobs_actions - old_action_log_probs)
-        ratios_raises = torch.exp(logprobs_raises - old_raise_log_probs)
+        # Check for NaN values and handle them
+        if torch.isnan(logprobs_actions).any() or torch.isnan(logprobs_raises).any():
+            print("Warning: NaN detected in log probabilities during batch training. Using fallback values.")
+            logprobs_actions = torch.nan_to_num(logprobs_actions, nan=-10.0)
+            logprobs_raises = torch.nan_to_num(logprobs_raises, nan=-10.0)
+        
+        # Check state values for NaN
+        if torch.isnan(state_values).any():
+            print("Warning: NaN detected in state values during batch training. Using fallback values.")
+            state_values = torch.nan_to_num(state_values, nan=0.0)
+            
+        # Add small epsilon to prevent division by zero or log of zero
+        epsilon = 1e-8
+        
+        # Clamp old log probabilities to prevent extreme values
+        old_action_log_probs_safe = old_action_log_probs.detach().clamp(min=-20.0, max=20.0)
+        old_raise_log_probs_safe = old_raise_log_probs.detach().clamp(min=-20.0, max=20.0)
+        
+        # Calculate policy ratios with numerical stability
+        ratios_actions = torch.exp(logprobs_actions - old_action_log_probs_safe)
+        ratios_raises = torch.exp(logprobs_raises - old_raise_log_probs_safe)
+        
+        # Ensure ratios are positive before taking square root
+        ratios_actions = torch.clamp(ratios_actions, min=epsilon)
+        ratios_raises = torch.clamp(ratios_raises, min=epsilon)
         
         # Combined ratio (geometric mean)
         combined_ratios = torch.sqrt(ratios_actions * ratios_raises)
         
-        # Calculate surrogate losses
-        surr1 = combined_ratios * advantages
-        surr2 = torch.clamp(combined_ratios, 1-eps_clip, 1+eps_clip) * advantages
+        # Clip the ratio to prevent extreme changes
+        clipped_ratios = torch.clamp(combined_ratios, 1-eps_clip, 1+eps_clip)
         
-        # Final loss
+        # Clip advantages for numerical stability
+        advantages_clipped = torch.clamp(advantages, min=-10.0, max=10.0)
+        
+        # Calculate surrogate losses (PPO objective function)
+        surr1 = combined_ratios * advantages_clipped
+        surr2 = clipped_ratios * advantages_clipped
+        
+        # Compute policy loss 
         policy_loss = -torch.min(surr1, surr2).mean()
-        value_loss = 0.5 * ppo_agent.MseLoss(state_values.squeeze(-1), rewards)
-        entropy_bonus = -0.01 * dist_entropy.mean()  # Encourage exploration
         
-        loss = policy_loss + value_loss + entropy_bonus
+        # Compute value function loss
+        value_loss = 0.5 * ppo_agent.MseLoss(state_values.squeeze(-1), rewards)
+        
+        # Compute entropy bonus to encourage exploration
+        entropy_loss = -0.01 * dist_entropy.mean()
+        
+        # Total loss (PPO objective function)
+        loss = policy_loss + value_loss + entropy_loss
+        
+        # Check if loss is NaN and handle it
+        if torch.isnan(loss).any():
+            print("Warning: NaN detected in batch training loss. Using component losses for update.")
+            if not torch.isnan(policy_loss).any():
+                loss = policy_loss
+            elif not torch.isnan(value_loss).any():
+                loss = value_loss
+            else:
+                print("All loss components are NaN. Skipping update.")
+                continue
+        
+        # Track losses for each component
+        policy_losses += policy_loss.item()
+        value_losses += value_loss.item()
+        entropy_losses += entropy_loss.item()
         total_loss += loss.item()
         
         # Perform gradient step
         ppo_agent.optimizer.zero_grad()
         loss.backward()
+        
+        has_nan_grads = False
+        for name, param in ppo_agent.policy.named_parameters():
+            if param.grad is not None and torch.isnan(param.grad).any():
+                has_nan_grads = True
+                print(f"Warning: NaN gradient detected in {name} during batch training")
+        
+        # Skip update if gradients contain NaN
+        if has_nan_grads:
+            print("Skipping parameter update due to NaN gradients in batch training")
+            continue
+        
         torch.nn.utils.clip_grad_norm_(ppo_agent.policy.parameters(), max_norm=0.5)
         ppo_agent.optimizer.step()
     
     # Update old policy to current policy
     ppo_agent.old_policy.load_state_dict(ppo_agent.policy.state_dict())
     
-    return total_loss / k_epochs
+    # Return comprehensive loss information as a dictionary
+    if k_epochs > 0:
+        avg_loss = total_loss / k_epochs
+        avg_policy_loss = policy_losses / k_epochs
+        avg_value_loss = value_losses / k_epochs
+        avg_entropy_loss = entropy_losses / k_epochs
+    else:
+        avg_loss = 0.0
+        avg_policy_loss = 0.0
+        avg_value_loss = 0.0
+        avg_entropy_loss = 0.0
+        
+    return {
+        'total': avg_loss,
+        'policy': avg_policy_loss,
+        'value': avg_value_loss,
+        'entropy': avg_entropy_loss
+    }
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a PPO agent for poker')
@@ -162,21 +242,21 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate')
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
     parser.add_argument('--eps_clip', type=float, default=0.2, help='PPO clip parameter')
-    parser.add_argument('--k_epochs', type=int, default=4, help='Number of epochs for PPO updates')
+    parser.add_argument('--k_epochs', type=int, default=100, help='Number of epochs for PPO updates')
     parser.add_argument('--replay_buffer_cap', type=int, default=10000, help='Maximum size of replay buffer')
     
     # Game parameters
     parser.add_argument('--ppo_agents', type=int, default=2, help='Number of PPO agents')
     parser.add_argument('--heuristic_agents', type=int, default=2, help='Number of heuristic agents')
     parser.add_argument('--random_agents', type=int, default=0, help='Number of random agents')
-    parser.add_argument('--deep_agents', type=int, default=0, help='Number of deep agents')
+    parser.add_argument('--deep_agents', type=int, default=2, help='Number of deep agents')
     parser.add_argument('--start_stack', type=int, default=400, help='Starting chip stack')
     parser.add_argument('--big_blind', type=int, default=10, help='Big blind amount')
     parser.add_argument('--small_blind', type=int, default=5, help='Small blind amount')
     
     # Model parameters
     parser.add_argument('--warm_start', type=str, default=None, help='Path to model for warm start')
-    parser.add_argument('--checkpoint_interval', type=int, default=1000, help='Save checkpoints every N games')
+    parser.add_argument('--checkpoint_interval', type=int, default=500, help='Save checkpoints every N games')
     parser.add_argument('--eval_interval', type=int, default=100, help='Evaluate every N games')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose output')
     parser.add_argument('--save_state_dict', action='store_true', help='Save model as state_dict instead of full checkpoint')
@@ -362,13 +442,21 @@ def train_ppo_agent():
         'avg_stack_changes': [],
         'ppo_losses': [],
         'eval_win_rates': [],
-        'eval_stack_changes': []
+        'eval_stack_changes': [],
+        'cumulative_rewards': [],      # Track cumulative rewards over training
+        'episode_rewards': [],         # Track individual episode rewards
+        'mean_episode_rewards': [],    # Track mean episode rewards per interval
+        'cumulative_reward_history': []  # Track cumulative reward at each game
     }
     
     games_played = 0
     total_games_won = 0
     update_counter = 0
     ppo_losses = []
+    
+    # Initialize reward tracking
+    cumulative_reward = 0.0
+    episode_rewards = []
     
     # Initialize replay buffer if using experience replay
     replay_buffer = []
@@ -391,7 +479,7 @@ def train_ppo_agent():
         random.shuffle(players)  # Randomize player order
         
         # Setup game
-        game = Game(players, args.big_blind, args.small_blind, verbose=args.verbose)
+        game = Game(players, args.big_blind, args.small_blind, verbose=False)
         
         # Initialize game state tracking for PPO players
         for player in ppo_players:
@@ -406,8 +494,29 @@ def train_ppo_agent():
             total_games_won += 1
         
         # Record terminal rewards for all PPO players
+        episode_total_reward = 0.0
         for player in ppo_players:
-            player.store_terminal_reward(player.stack)
+            # Terminal reward is the final stack value
+            terminal_reward = player.stack
+            
+            # Store terminal reward in the player
+            player.store_terminal_reward(terminal_reward)
+            
+            # Calculate reward as relative change from starting stack
+            relative_reward = (terminal_reward - args.start_stack) / args.start_stack
+            episode_total_reward += relative_reward
+        
+        # Add to our reward tracking
+        episode_rewards.append(episode_total_reward)
+        cumulative_reward += episode_total_reward
+        
+        # Store cumulative reward history for each game
+        metrics['cumulative_reward_history'].append(cumulative_reward)
+        
+        # Log reward information if verbose
+        if args.verbose and game_number % 10 == 0:  # Log every 10 games to avoid too much output
+            logging.info(f"Game {game_number}: Episode reward: {episode_total_reward:.4f}, " +
+                        f"Cumulative reward: {cumulative_reward:.4f}")
         
         if args.use_replay:
             # Extract game states for experience replay
@@ -421,20 +530,42 @@ def train_ppo_agent():
             # Train from batch if we have enough episodes
             if len(replay_buffer) >= args.batch_size:
                 training_batch = random.sample(replay_buffer, args.batch_size)
-                loss = train_ppo_from_batch(
+                loss_info = train_ppo_from_batch(
                     ppo_agent, 
                     training_batch, 
                     device, 
                     k_epochs=args.k_epochs, 
                     eps_clip=args.eps_clip
                 )
-                ppo_losses.append(loss)
+                
+                # Handle different loss return formats
+                if isinstance(loss_info, dict):
+                    ppo_losses.append(loss_info)
+                    if args.verbose:
+                        print(f"Batch Loss - Total: {loss_info['total']:.5f}, "
+                              f"Policy: {loss_info['policy']:.5f}, "
+                              f"Value: {loss_info['value']:.5f}, "
+                              f"Entropy: {loss_info['entropy']:.5f}")
+                else:
+                    # For backward compatibility
+                    ppo_losses.append({'total': loss_info})
         else:
-            # Update PPO agent using standard method if we have enough experience
             update_counter += 1
             if update_counter >= args.batch_size:
-                loss = ppo_agent.update()
-                ppo_losses.append(loss)
+                loss_info = ppo_agent.update()
+                
+                # Handle different loss return formats
+                if isinstance(loss_info, dict):
+                    ppo_losses.append(loss_info)
+                    if args.verbose:
+                        print(f"Update #{update_counter} - Total: {loss_info['total']:.5f}, "
+                              f"Policy: {loss_info['policy']:.5f}, "
+                              f"Value: {loss_info['value']:.5f}, "
+                              f"Entropy: {loss_info['entropy']:.5f}")
+                else:
+                    # For backward compatibility
+                    ppo_losses.append({'total': loss_info})
+                    
                 update_counter = 0
         
         # Calculate current win rate
@@ -452,9 +583,60 @@ def train_ppo_agent():
             # Store metrics
             metrics['game_numbers'].append(game_number)
             metrics['win_rates'].append(current_win_rate)
-            metrics['ppo_losses'].append(np.mean(ppo_losses) if ppo_losses else 0)
+            
+            # Store reward metrics
+            metrics['cumulative_rewards'].append(cumulative_reward)
+            
+            # Store the last batch of episode rewards
+            recent_episode_rewards = episode_rewards[-args.eval_interval:]
+            if recent_episode_rewards:
+                mean_recent_reward = np.mean(recent_episode_rewards)
+                metrics['mean_episode_rewards'].append(mean_recent_reward)
+                logging.info(f"Mean episode reward over last {len(recent_episode_rewards)} episodes: {mean_recent_reward:.4f}")
+            
+            # Extract loss components for metrics
+            if ppo_losses:
+                if isinstance(ppo_losses[0], dict):
+                    # Calculate average for each loss component
+                    avg_total_loss = np.mean([l.get('total', 0.0) for l in ppo_losses])
+                    avg_policy_loss = np.mean([l.get('policy', 0.0) for l in ppo_losses])
+                    avg_value_loss = np.mean([l.get('value', 0.0) for l in ppo_losses])
+                    avg_entropy_loss = np.mean([l.get('entropy', 0.0) for l in ppo_losses])
+                    
+                    # Store detailed loss components
+                    metrics['ppo_losses'].append(avg_total_loss)
+                    
+                    # Ensure loss component lists exist in metrics
+                    if 'policy_losses' not in metrics:
+                        metrics['policy_losses'] = []
+                        metrics['value_losses'] = []
+                        metrics['entropy_losses'] = []
+                    
+                    metrics['policy_losses'].append(avg_policy_loss)
+                    metrics['value_losses'].append(avg_value_loss)
+                    metrics['entropy_losses'].append(avg_entropy_loss)
+                    
+                    # Log detailed loss info
+                    logging.info(f"Loss components - Policy: {avg_policy_loss:.5f}, " +
+                                f"Value: {avg_value_loss:.5f}, " +
+                                f"Entropy: {avg_entropy_loss:.5f}")
+                else:
+                    # For backward compatibility
+                    metrics['ppo_losses'].append(np.mean(ppo_losses))
+            else:
+                metrics['ppo_losses'].append(0)
+                
+                # Add zeros for component losses if they exist in metrics
+                if 'policy_losses' in metrics:
+                    metrics['policy_losses'].append(0)
+                    metrics['value_losses'].append(0)
+                    metrics['entropy_losses'].append(0)
+            
             metrics['eval_win_rates'].append(eval_win_rate)
             metrics['eval_stack_changes'].append(eval_stack_change)
+            
+            # Store a snapshot of all episode rewards at each evaluation point
+            metrics['episode_rewards'].append(list(episode_rewards))
             
             # Reset metrics for next interval
             ppo_losses = []

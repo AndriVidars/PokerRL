@@ -49,8 +49,9 @@ class PlayerPPO(Player):
         game_state = copy.deepcopy(game_state)
         
         # Use the PPO agent to select an action
-        action, raise_amount = self.ppo_agent.select_action(game_state)
+        action, raise_amount, action_probs, raise_size_dist = self.ppo_agent.select_action(game_state)
         
+
         # Store the action for reward calculation later
         self.recent_actions.append((action, raise_amount))
         
@@ -66,10 +67,8 @@ class PlayerPPO(Player):
                     self.handle_check_call()
                     action = Action.CHECK_CALL
                 else:
-                    # Ensure raise amount meets minimum requirements
                     raise_amount = max(self.game.min_bet, raise_amount)
-                    # Ensure raise amount doesn't exceed the player's stack
-                    # Use floor to avoid floating point precision issues
+           
                     raise_amount = min(int(raise_amount), int(self.stack))
                     
                     self.handle_raise(raise_amount)
@@ -84,7 +83,7 @@ class PlayerPPO(Player):
                 action_amt = raise_amount
             
             self.game.current_round_game_states[self][1].append(
-                (game_state, None, None, (action, action_amt))
+                (game_state, action_probs, raise_size_dist, (action, action_amt))
             )
             
             # Calculate immediate reward for this action

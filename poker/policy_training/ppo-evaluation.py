@@ -77,7 +77,7 @@ def evaluate_ppo_agent(args):
         random.shuffle(players)
         
         # Create and run game
-        game = Game(players, args.big_blind, args.small_blind, verbose=args.verbose)
+        game = Game(players, args.big_blind, args.small_blind, verbose=False)
         winner, rounds_played, eliminated, _ = game.gameplay_loop()
         
         # Record results

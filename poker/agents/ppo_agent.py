@@ -5,6 +5,7 @@ from torch.distributions import Categorical
 from poker.agents.deep_learning_agent import PokerPlayerNetV1, FFN, TruncatedNormal
 from poker.agents.game_state import Stage
 from poker.core.action import Action
+import numpy as np
 
 class RolloutBuffer:
     def __init__(self):
@@ -82,15 +83,19 @@ class PPOPokerNet(PokerPlayerNetV1):
         with torch.no_grad():
             action_logits, raise_size_dist, state_value = self(x_player_game, x_acted_history, x_to_act_history)
             
-            # Fix NaN values in action logits
             action_logits = torch.nan_to_num(action_logits, nan=0.0)
+
+            action_logits[:, 0] *= 1.5
+            action_logits[:, 1] *= 1
+            action_logits[:, 2] *= 1
             
             # Sample from action distribution
             action_probs = F.softmax(action_logits, dim=-1)
-            # Handle NaN values and ensure valid probabilities
-            action_probs = torch.nan_to_num(action_probs, nan=1.0/3.0)
-            # Normalize to ensure probabilities sum to 1
-            action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
+            # action_probs = torch.nan_to_num(action_probs, nan=1.0/3.0)
+            actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]
+
+
+            
             
             action_dist = Categorical(action_probs)
             action = action_dist.sample()
@@ -99,13 +104,16 @@ class PPOPokerNet(PokerPlayerNetV1):
             # Sample from raise size distribution if applicable
             raise_size = raise_size_dist.sample()
             raise_size_logprob = torch.nan_to_num(raise_size_dist.log_prob(raise_size), nan=0.0)
+
+            paction = np.random.choice(actions, p=action_probs.detach().numpy()[0])
             
-        return action, raise_size, action_logprob, raise_size_logprob, state_value
+        return (paction, action_probs), raise_size, action_logprob, raise_size_logprob, state_value
     
-    def evaluate(self, x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes):
+    def forward_and_evaluate(self, x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes):
         """
-        Evaluate actions and compute log probabilities, entropy, and state values for PPO updates
+        Run a forward pass through the model and compute log probabilities, entropy, and state values for PPO updates
         """
+        # Forward pass through the network
         action_logits, raise_size_dist, state_values = self(x_player_game, x_acted_history, x_to_act_history)
         
         # Fix NaN values in action logits
@@ -118,14 +126,22 @@ class PPOPokerNet(PokerPlayerNetV1):
         # Normalize to ensure probabilities sum to 1
         action_probs = action_probs / action_probs.sum(dim=-1, keepdim=True)
         
+        # Create categorical distribution and compute log probabilities and entropy
         action_dist = Categorical(action_probs)
         action_logprobs = action_dist.log_prob(actions)
         action_entropy = action_dist.entropy()
         
-        # Raise size log probs with NaN handling
+        # Compute raise size log probabilities with NaN handling
         raise_logprobs = torch.nan_to_num(raise_size_dist.log_prob(raise_sizes), nan=0.0)
         
         return action_logprobs, raise_logprobs, state_values, action_entropy
+        
+    # For backward compatibility
+    def evaluate(self, x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes):
+        """
+        Alias for forward_and_evaluate for backward compatibility
+        """
+        return self.forward_and_evaluate(x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes)
     
     def warm_start_from_model(self, model_state_dict):
         """
@@ -146,7 +162,7 @@ class PPOAgent:
                  lr=1e-4, 
                  gamma=0.99, 
                  eps_clip=0.2, 
-                 K_epochs=5, 
+                 K_epochs=100, 
                  use_batchnorm=False,
                  device='cpu'):
         
@@ -186,9 +202,11 @@ class PPOAgent:
         x_to_act_history = x_to_act_history.unsqueeze(0).to(self.device)
         
         # Get action using old policy
-        action, raise_size, action_logprob, raise_size_logprob, state_value = self.old_policy.act(
+        action_info, raise_size, action_logprob, raise_size_logprob, state_value = self.old_policy.act(
             x_player_game, x_acted_history, x_to_act_history
         )
+        
+        action, action_probs = action_info
         
         # Store in buffer
         self.buffer.states_player_game.append(x_player_game)
@@ -201,14 +219,13 @@ class PPOAgent:
         self.buffer.state_values.append(state_value)
         
         # Convert to appropriate PokerAction and raise amount
-        poker_action = Action(action.item())
+        poker_action = action
         raise_amount = raise_size.item() * game_state.pot_size
-        
-        # Handle the adjustment for the game environment
+
         if poker_action == Action.RAISE:
             raise_amount = max(game_state.min_allowed_bet, raise_amount - game_state.min_bet_to_continue)
         
-        return poker_action, raise_amount
+        return poker_action, raise_amount, action_probs.detach().numpy()[0], raise_size.item()
     
     def store_reward(self, reward, is_terminal=False):
         """
@@ -276,10 +293,14 @@ class PPOAgent:
         advantages = rewards - old_state_values.detach()
         
         # Optimize policy for K epochs
-        total_loss = 0
+        total_loss = 0.0
+        policy_losses = 0.0
+        value_losses = 0.0
+        entropy_losses = 0.0
+        
         for _ in range(self.K_epochs):
-            # Evaluate actions
-            logprobs_actions, logprobs_raises, state_values, dist_entropy = self.policy.evaluate(
+            # Run forward pass through the policy network and get new action probabilities and values
+            logprobs_actions, logprobs_raises, state_values, dist_entropy = self.policy.forward_and_evaluate(
                 old_states_player_game,
                 old_states_acted_history,
                 old_states_to_act_history,
@@ -287,29 +308,92 @@ class PPOAgent:
                 old_raise_sizes
             )
             
-            # Compute action ratios for PPO
-            ratios_actions = torch.exp(logprobs_actions - old_logprobs_actions.detach())
-            ratios_raises = torch.exp(logprobs_raises - old_logprobs_raise_sizes.detach())
+            # Check for NaN values and handle them
+            if torch.isnan(logprobs_actions).any() or torch.isnan(logprobs_raises).any():
+                print("Warning: NaN detected in log probabilities. Using fallback values.")
+                # Replace NaN with safe values for log probabilities (very small negative value)
+                logprobs_actions = torch.nan_to_num(logprobs_actions, nan=-10.0)
+                logprobs_raises = torch.nan_to_num(logprobs_raises, nan=-10.0)
             
-            # Combined ratio (geometric mean)
+            # Check state values for NaN
+            if torch.isnan(state_values).any():
+                print("Warning: NaN detected in state values. Using fallback values.")
+                state_values = torch.nan_to_num(state_values, nan=0.0)
+            
+            # Calculate policy ratio for actions in a numerically stable way
+            # Add small epsilon to prevent division by zero or log of zero
+            epsilon = 1e-8
+            # Clamp the old log probs to prevent extreme values
+            old_logprobs_actions_safe = old_logprobs_actions.detach().clamp(min=-20.0, max=20.0)
+            old_logprobs_raises_safe = old_logprobs_raise_sizes.detach().clamp(min=-20.0, max=20.0)
+            
+            ratios_actions = torch.exp(logprobs_actions - old_logprobs_actions_safe)
+            
+            # Calculate policy ratio for raise sizes
+            ratios_raises = torch.exp(logprobs_raises - old_logprobs_raises_safe)
+            
+            # Combined ratio (geometric mean) with safeguards
+            # Ensure ratios are positive before taking square root
+            ratios_actions = torch.clamp(ratios_actions, min=epsilon)
+            ratios_raises = torch.clamp(ratios_raises, min=epsilon)
+            
             combined_ratios = torch.sqrt(ratios_actions * ratios_raises)
             
-            # Calculate surrogate losses
-            surr1 = combined_ratios * advantages
-            surr2 = torch.clamp(combined_ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+            # Clip the ratio to prevent extreme changes
+            clipped_ratios = torch.clamp(combined_ratios, 1-self.eps_clip, 1+self.eps_clip)
             
-            # Combine value loss, policy loss, and entropy bonus
-            value_loss = self.MseLoss(state_values.squeeze(-1), rewards)
+            # Calculate surrogate losses with advantage clipping for stability
+            advantages_clipped = torch.clamp(advantages, min=-10.0, max=10.0)
+            surr1 = combined_ratios * advantages_clipped
+            surr2 = clipped_ratios * advantages_clipped
+            
+            # Compute policy loss (negative because we're minimizing)
             policy_loss = -torch.min(surr1, surr2).mean()
-            entropy_bonus = -0.01 * dist_entropy.mean()  # Encourage exploration
             
-            loss = policy_loss + 0.5 * value_loss + entropy_bonus
+            # Compute value function loss
+            value_loss = 0.5 * self.MseLoss(state_values.squeeze(-1), rewards)
+            
+            # Compute entropy bonus to encourage exploration
+            entropy_loss = -0.01 * dist_entropy.mean()
+            
+            # Total loss (PPO objective function)
+            loss = policy_loss + value_loss + entropy_loss
+            
+            # Check if loss is NaN
+            if torch.isnan(loss).any():
+                print("Warning: NaN detected in loss. Using component losses for update.")
+                # If total loss is NaN, use the component that isn't NaN
+                if not torch.isnan(policy_loss).any():
+                    loss = policy_loss
+                elif not torch.isnan(value_loss).any():
+                    loss = value_loss
+                else:
+                    print("All loss components are NaN. Skipping update.")
+                    continue
+            
+            # Track losses for each component
+            policy_losses += policy_loss.item()
+            value_losses += value_loss.item()
+            entropy_losses += entropy_loss.item() 
             total_loss += loss.item()
             
             # Perform gradient step
             self.optimizer.zero_grad()
             loss.backward()
-            # Optional: gradient clipping
+            
+            # Check for NaN gradients
+            has_nan_grads = False
+            for name, param in self.policy.named_parameters():
+                if param.grad is not None and torch.isnan(param.grad).any():
+                    has_nan_grads = True
+                    print(f"Warning: NaN gradient detected in {name}")
+            
+            # Skip update if gradients contain NaN
+            if has_nan_grads:
+                print("Skipping parameter update due to NaN gradients")
+                continue
+                
+            # Gradient clipping to prevent exploding gradients
             nn.utils.clip_grad_norm_(self.policy.parameters(), max_norm=0.5)
             self.optimizer.step()
         
@@ -319,7 +403,24 @@ class PPOAgent:
         # Clear buffer
         self.buffer.clear()
         
-        return total_loss / self.K_epochs
+        # Return comprehensive loss information as a dictionary
+        if self.K_epochs > 0:
+            avg_loss = total_loss / self.K_epochs
+            avg_policy_loss = policy_losses / self.K_epochs
+            avg_value_loss = value_losses / self.K_epochs
+            avg_entropy_loss = entropy_losses / self.K_epochs
+        else:
+            avg_loss = 0.0
+            avg_policy_loss = 0.0
+            avg_value_loss = 0.0
+            avg_entropy_loss = 0.0
+            
+        return {
+            'total': avg_loss,
+            'policy': avg_policy_loss,
+            'value': avg_value_loss,
+            'entropy': avg_entropy_loss
+        }
     
     def save(self, filepath, state_dict_only=False):
         """
@@ -361,9 +462,12 @@ class PPOAgent:
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             else:
                 # Assume it's a direct state dict
-                self.policy.load_state_dict(checkpoint)
-                self.old_policy.load_state_dict(checkpoint)
-                print("Loaded state_dict only (no optimizer state)")
+                try:
+                    self.policy.load_state_dict(checkpoint)
+                    self.old_policy.load_state_dict(checkpoint)
+                    print("Loaded state_dict only (no optimizer state)")
+                except:
+                    self.warm_start(filepath)
                 
         except Exception as e:
             print(f"Error loading model: {e}")
