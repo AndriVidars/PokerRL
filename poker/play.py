@@ -51,6 +51,12 @@ def main():
         setup_str += f'{p_types[i]}{n}_'
     
     setup_str = setup_str[:-1]
+    if args.num_D_primary_players:
+        setup_str = args.primary_state_dict.split('/')[-1] + setup_str
+    
+    if args.num_D_validation_players:
+        setup_str = args.validation_state_dict.split('/')[-1] + setup_str
+
     st = time.time()
     winner_stats = []
     eliminated_stats = []

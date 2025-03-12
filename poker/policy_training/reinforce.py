@@ -127,13 +127,13 @@ def dump_checkpoint(state_dict, f_name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument("--max_grad_norm", type=float, default=0.25)
     parser.add_argument("--num_games", type=int, default=10_000)
-    parser.add_argument("--replay_buffer_cap", type=int, default=5000)
+    parser.add_argument("--replay_buffer_cap", type=int, default=1000)
     parser.add_argument("--metric_interval", type=int, default=100)
-    parser.add_argument("--checkpoint_interval", type=int, default=1000)
+    parser.add_argument("--checkpoint_interval", type=int, default=500)
     parser.add_argument("--policy_state_dict", type=str, default='poker/e55f94.12150310.st')
     parser.add_argument("--frozen_state_dict", type=str, default='poker/e55f94.12150310.st') # if playing against some imitation agents that dont learn
     parser.add_argument("--num_H_players", type=int, default=2) # number of heuristic players in training setup
