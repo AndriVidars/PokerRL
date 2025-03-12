@@ -70,15 +70,12 @@ class TruncatedNormal(torch.distributions.Distribution):
     Normal distribution with truncated sampling
     """
     def __init__(self, loc, scale, low, high, validate_args=None):
-        # Fix NaN values to prevent distribution errors
-        self._loc = torch.nan_to_num(loc, nan=0.5)  # Replace NaNs with 0.5
-        self._scale = torch.nan_to_num(scale, nan=0.1)  # Replace NaNs with 0.1
-        # Ensure scale is positive
-        self._scale = torch.clamp(self._scale, min=1e-5)
+        self._loc = loc
+        self._scale = scale
         self.low = low
         self.high = high
-        self.normal = Normal(self._loc, self._scale)
-        super().__init__(validate_args=False)  # Always disable validation
+        self.normal = Normal(loc, scale)
+        super().__init__(validate_args=validate_args)
 
     def sample(self, sample_shape=torch.Size()):
         res = self.normal.sample(sample_shape=sample_shape)
@@ -87,6 +84,9 @@ class TruncatedNormal(torch.distributions.Distribution):
     def log_prob(self, value):
         return self.normal.log_prob(value)
     
+    def clamped_mean(self):
+        return clamp_ste(self._loc, self.low, self.high)
+    
     def __getitem__(self, idx):
         return TruncatedNormal(self._loc[idx], self._scale[idx], low=self.low[idx], high=self.high[idx])
     
@@ -94,7 +94,7 @@ class TruncatedNormal(torch.distributions.Distribution):
         return f"TruncatedNormal(u={self._loc:4f}, sd={self._scale:4f}, low={self.low:4f}, high={self.high:4f})"
 
 class PokerPlayerNetV1(nn.Module):
-    def __init__(self, use_batchnorm=False):
+    def __init__(self, use_batchnorm=False, use_mse_loss_for_raise=False):
         super().__init__()
 
         self.stage_embed = nn.Embedding(4, 10)
@@ -130,6 +130,10 @@ class PokerPlayerNetV1(nn.Module):
         )
         self.aggressiveness_call = 1.0 # agressiveness just controls probabilities
         self.aggressiveness_raise = 1.0 # agressiveness just controls probabilities
+        self.use_mse_raise = use_mse_loss_for_raise
+        # init raise's std deviation weights
+        self.gather_net.net[-1].weight.data[4] = 0
+        self.gather_net.net[-1].bias.data[4] = -2.5
 
     @torch.no_grad()
     def get_mask_and_clamp(self, x_player_game):
@@ -190,7 +194,12 @@ class PokerPlayerNetV1(nn.Module):
         acc = (action == real_player_action).to(float).mean()
         raise_size_loss = torch.tensor(0)
         if should_raise.any():
-            raise_size_loss = -(raise_size[should_raise].log_prob(real_raise_size[should_raise])).mean()
+            if self.use_mse_raise:
+                raise_size = raise_size[should_raise]
+                raise_size = clamp_ste(raise_size._loc, raise_size.low, raise_size.high)
+                raise_size_loss = nn.functional.mse_loss(raise_size, real_raise_size[should_raise])
+            else:
+                raise_size_loss = -(raise_size[should_raise].log_prob(real_raise_size[should_raise])).mean()
 
         return acc, raise_size_loss
 
@@ -219,10 +228,17 @@ class PokerPlayerNetV1(nn.Module):
 
         action_loss = nn.functional.cross_entropy(action, real_player_action.to(torch.int64)) 
         raise_loss = 0
+        raise_loss_mult = 1
         not_folded = real_player_action >= 2
         if torch.any(not_folded):
-            raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
-        loss = raise_loss + 2*action_loss
+            if self.use_mse_raise:
+                raise_size = raise_size[not_folded]
+                raise_size = clamp_ste(raise_size._loc, raise_size.low, raise_size.high)
+                raise_loss = nn.functional.mse_loss(raise_size, real_raise_size[not_folded])
+            else:
+                raise_loss = -(raise_size[not_folded].log_prob(real_raise_size[not_folded])).mean()
+                raise_loss_mult = 0.5
+        loss = raise_loss_mult*raise_loss + action_loss
         return loss
 
     def train_model(self, train_loader, val_loader=None, num_epochs=10, lr=1e-3, device=None, eval_steps=100):
@@ -263,13 +279,15 @@ class PokerPlayerNetV1(nn.Module):
         return pd.DataFrame(dict(train_loss=train_losses, valid_loss=valid_lossess, step=steps, **valid_metrics)).set_index("step")
 
 
-    def eval_game_states(self, game_states):
+    def eval_game_states(self, game_states, log_action_probs=False):
         batch = [self.game_state_to_batch(gs) for gs in game_states]
         batch = collate_fn(batch)
-        
+
         action_logits, raise_size = self(batch[0], batch[1], batch[2])
         action_logits[:, 1] *= self.aggressiveness_call # call
         action_logits[:, 2] *= self.aggressiveness_raise # raise
+        if log_action_probs:
+            return torch.log_softmax(action_logits, dim=-1), raise_size
         return torch.softmax(action_logits, dim=-1), raise_size
 
     def eval_game_state(self, game_state):
@@ -282,10 +300,26 @@ class PokerPlayerNetV1(nn.Module):
     def get_log_probs(self, actions, raise_sizes, game_states):
         # actions -> (B,) Tensor(int64)
         # raise_size -> (B,) Tensor(float32)
-        action_probs_distr, raise_sizes_distr = self.eval_game_states(game_states)
-        action_log_probs = action_probs_distr.gather(1, actions.unsqueeze(1)).squeeze(1)
+        action_log_probs, raise_sizes_distr = self.eval_game_states(game_states, log_action_probs=True)
+        action_log_probs = action_log_probs.gather(1, actions.unsqueeze(1)).squeeze(1)
         raise_log_probs = raise_sizes_distr.log_prob(raise_sizes)
         return action_log_probs, raise_log_probs
+
+    def load_state_dict(self, state_dict_path):
+        state_dict = torch.load(state_dict_path)
+        if "e55f94" not in state_dict_path:
+            super().load_state_dict(state_dict) 
+            return
+        orig_gather_net_weight = state_dict.pop("gather_net.net.8.weight")
+        orig_gather_net_bias = state_dict.pop("gather_net.net.8.bias")
+        super().load_state_dict(state_dict, strict=False)
+        
+        last_layer = self.gather_net.net[-1]
+        last_layer.weight.data[:4] = orig_gather_net_weight.data
+        last_layer.weight.data[4] = 0
+
+        last_layer.bias.data[:4] = orig_gather_net_bias.data
+        last_layer.bias.data[4] = -2.5
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -360,3 +394,4 @@ class PokerPlayerNetV1(nn.Module):
         dataset = GameStateTensorDataset(tensor_states)
         data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
         return data_loader
+    

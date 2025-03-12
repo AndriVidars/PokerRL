@@ -32,7 +32,7 @@ def parse_args():
     parser.add_argument('--io_agents', type=int, default=0, help='Number of IO (human) agents')
     
     # Model paths
-    parser.add_argument('--deep_model', type=str, default='poker/193c5c.05050310.st', 
+    parser.add_argument('--deep_model', type=str, default='poker/e55f94.12150310.st', 
                         help='Path to deep learning model state dict')
     parser.add_argument('--ppo_model', type=str, default=None, 
                         help='Path to PPO model state dict')

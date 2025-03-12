@@ -25,7 +25,7 @@ def parse_args():
                         choices=['heuristic', 'random', 'imitation'],
                         help='Type of opponents to evaluate against')
     parser.add_argument('--imitation_model_path', type=str, 
-                        default='poker/193c5c.05050310.st',
+                        default='poker/e55f94.12150310.st',
                         help='Path to the imitation learning model (if using imitation opponents)')
     return parser.parse_args()
 

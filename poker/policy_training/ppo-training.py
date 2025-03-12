@@ -430,7 +430,7 @@ def train_ppo_agent():
             imitation_model.load_state_dict(torch.load(args.warm_start))
         else:
             # Default to standard model
-            imitation_model.load_state_dict(torch.load('poker/193c5c.05050310.st'))
+            imitation_model.load_state_dict(torch.load('poker/e55f94.12150310.st'))
         player_types[PlayerDeepAgent] = args.deep_agents
     else:
         imitation_model = None
