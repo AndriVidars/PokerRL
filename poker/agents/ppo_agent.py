@@ -105,7 +105,14 @@ class PPOPokerNet(PokerPlayerNetV1):
             raise_size = raise_size_dist.sample()
             raise_size_logprob = torch.nan_to_num(raise_size_dist.log_prob(raise_size), nan=0.0)
 
-            paction = np.random.choice(actions, p=action_probs.detach().numpy()[0])
+            # Get the index of the chosen action to return as a tensor
+            action_idx = action_dist.sample()
+            
+            # Convert index to Action enum for the game logic
+            paction = actions[action_idx.item()]
+            
+            # Log probability based on the sampled index
+            action_logprob = action_dist.log_prob(action_idx)
             
         return (paction, action_probs), raise_size, action_logprob, raise_size_logprob, state_value
     
@@ -147,12 +154,41 @@ class PPOPokerNet(PokerPlayerNetV1):
         """
         Initialize the policy network from a pre-trained PokerPlayerNetV1 model
         """
-        # Filter out parameters that don't exist in the target model
-        filtered_state_dict = {k: v for k, v in model_state_dict.items() 
-                              if k in self.state_dict() and 'critic_net' not in k}
+        if isinstance(model_state_dict, str):
+            model_state_dict = torch.load(model_state_dict)
         
-        # Load the filtered state dict
-        self.load_state_dict(filtered_state_dict, strict=False)
+        # Special handling for the gather_net layer that might have different dimensions
+        if "gather_net.net.8.weight" in model_state_dict:
+            orig_gather_net_weight = model_state_dict.pop("gather_net.net.8.weight")
+            orig_gather_net_bias = model_state_dict.pop("gather_net.net.8.bias")
+            
+            # Filter out parameters that don't exist in the target model
+            filtered_state_dict = {k: v for k, v in model_state_dict.items() 
+                                if k in self.state_dict() and 'critic_net' not in k}
+            
+            # Load the filtered state dict
+            torch.nn.Module.load_state_dict(self, filtered_state_dict, strict=False)
+            
+            # Handle the last layer separately
+            if hasattr(self, 'gather_net') and hasattr(self.gather_net, 'net'):
+                last_layer = self.gather_net.net[-1]
+                output_size = last_layer.weight.size(0)
+                input_size = last_layer.weight.size(1)
+                
+                # Copy weights for the dimensions that match
+                min_output = min(output_size, orig_gather_net_weight.size(0))
+                last_layer.weight.data[:min_output, :input_size] = orig_gather_net_weight.data[:min_output, :]
+                last_layer.bias.data[:min_output] = orig_gather_net_bias.data[:min_output]
+                
+                # Initialize any additional dimensions
+                if output_size > min_output:
+                    last_layer.weight.data[min_output:, :] = 0
+                    last_layer.bias.data[min_output:] = -2.5  # Bias initialization for new dimensions
+        else:
+            # For other models without specific gather_net layer
+            filtered_state_dict = {k: v for k, v in model_state_dict.items() 
+                                if k in self.state_dict() and 'critic_net' not in k}
+            torch.nn.Module.load_state_dict(self, filtered_state_dict, strict=False)
         
         print("Model warm-started from pre-trained PokerPlayerNetV1")
 
@@ -212,7 +248,9 @@ class PPOAgent:
         self.buffer.states_player_game.append(x_player_game)
         self.buffer.states_acted_history.append(x_acted_history)
         self.buffer.states_to_act_history.append(x_to_act_history)
-        self.buffer.actions.append(action)
+        # Store the index of the action (enum.value) as a tensor
+        action_idx = torch.tensor([action.value], dtype=torch.int64, device=self.device)
+        self.buffer.actions.append(action_idx)
         self.buffer.raise_sizes.append(raise_size)
         self.buffer.logprobs_actions.append(action_logprob)
         self.buffer.logprobs_raise_sizes.append(raise_size_logprob)
@@ -479,4 +517,4 @@ class PPOAgent:
         """
         state_dict = torch.load(model_path)
         self.policy.warm_start_from_model(state_dict)
-        self.old_policy.load_state_dict(self.policy.state_dict())
+        torch.nn.Module.load_state_dict(self.old_policy, self.policy.state_dict())

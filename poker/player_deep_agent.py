@@ -10,9 +10,10 @@ import copy
 import torch
 
 class PlayerDeepAgent(Player):
-    def __init__(self, name, agent_model:PokerPlayerNetV1, stack = 0):
+    def __init__(self, name, agent_model:PokerPlayerNetV1, stack = 0, primary = False):
         super().__init__(name, stack)
         self.agent = agent_model
+        self.primary = primary
     
     def _act(self):
         stack_pre_action = self.stack

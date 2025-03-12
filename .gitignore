@@ -182,4 +182,6 @@ test_copy.ipynb
 game_log.txt
 
 poker/policy_training/checkpoints/**
+poker/policy_training/checkpoints_arch/**
+
 poker/policy_training/ppo-batch-training.py

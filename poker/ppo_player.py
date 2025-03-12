@@ -13,7 +13,7 @@ class PlayerPPO(Player):
     """
     Player that uses PPO to make decisions in the poker game.
     """
-    def __init__(self, name, ppo_agent=None, stack=0):
+    def __init__(self, name, ppo_agent=None, stack=0, primary=False):
         super().__init__(name, stack)
         self.ppo_agent = ppo_agent
         self.accumulated_reward = 0
@@ -21,6 +21,7 @@ class PlayerPPO(Player):
         self.is_training = True
         self.last_stack_before_action = None
         self.recent_actions = []
+        self.primary = primary
     
     def _act(self):
         """
@@ -73,21 +74,19 @@ class PlayerPPO(Player):
                     
                     self.handle_raise(raise_amount)
         
-        # Store state in game history for later learning
-        if self.is_training and self.game.current_round_game_states is not None:
-            stack_post_action = self.stack
-            action_amt = 0
-            if action == Action.CHECK_CALL:
-                action_amt = self.last_stack_before_action - stack_post_action
-            elif action == Action.RAISE:
-                action_amt = raise_amount
-            
-            self.game.current_round_game_states[self][1].append(
-                (game_state, action_probs, raise_size_dist, (action, action_amt))
-            )
-            
-            # Calculate immediate reward for this action
-            self._calculate_immediate_reward(action, stack_post_action)
+        stack_post_action = self.stack
+        action_amt = 0
+        if action == Action.CHECK_CALL:
+            action_amt = self.last_stack_before_action - stack_post_action
+        elif action == Action.RAISE:
+            action_amt = raise_amount
+        
+        self.game.current_round_game_states[self][1].append(
+            (game_state, action_probs, raise_size_dist, (action, action_amt))
+        )
+        
+        # Calculate immediate reward for this action
+        self._calculate_immediate_reward(action, stack_post_action)
             
         return action
     
@@ -112,10 +111,9 @@ class PlayerPPO(Player):
                     immediate_reward -= 0.2
             else:
                 immediate_reward -= 0.05  # Small penalty for folding early
-                
-        # Store the immediate reward
-        if self.ppo_agent and self.is_training:
-            self.ppo_agent.store_reward(immediate_reward, is_terminal=False)
+        
+        
+        self.ppo_agent.store_reward(immediate_reward, is_terminal=False)
         
         return immediate_reward
     
@@ -171,14 +169,13 @@ class PlayerPPO(Player):
         """
         Store terminal reward at the end of a round/game
         """
-        if self.is_training and self.ppo_agent:
-            # Calculate final reward as relative stack change over the round
-            relative_stack_change = (end_stack - self.round_start_stack) / max(1, self.round_start_stack)
-            
-            # Boost or penalize based on the outcome
-            terminal_reward = relative_stack_change * 3.0  # Amplify the terminal reward
-            
-            self.ppo_agent.store_reward(terminal_reward, is_terminal=True)
-            
-            # Reset for next round
-            self.accumulated_reward = 0
+        # Calculate final reward as relative stack change over the round
+        relative_stack_change = (end_stack - self.round_start_stack) / max(1, self.round_start_stack)
+        
+        # Boost or penalize based on the outcome
+        terminal_reward = relative_stack_change * 3.0  # Amplify the terminal reward
+        
+        self.ppo_agent.store_reward(terminal_reward, is_terminal=True)
+        
+        # Reset for next round
+        self.accumulated_reward = 0

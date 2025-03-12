@@ -31,6 +31,12 @@ def parse_args():
     parser.add_argument('--random_agents', type=int, default=0, help='Number of random agents')
     parser.add_argument('--io_agents', type=int, default=0, help='Number of IO (human) agents')
     
+    # Primary player indices
+    parser.add_argument('--primary_ppo_idx', type=int, default=0, 
+                        help='Index of the primary PPO agent (0-based)')
+    parser.add_argument('--primary_deep_idx', type=int, default=0, 
+                        help='Index of the primary deep learning agent (0-based)')
+    
     # Model paths
     parser.add_argument('--deep_model', type=str, default='poker/e55f94.12150310.st', 
                         help='Path to deep learning model state dict')
@@ -75,7 +81,7 @@ if __name__ == '__main__':
     if args.deep_agents > 0:
         print(f"Loading deep learning model from {args.deep_model}")
         agent_model = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model.load_state_dict(state_dict=torch.load(args.deep_model))
+        agent_model.load_state_dict(args.deep_model)      
         agent_model.eval()  # Set to evaluation mode
 
     # Load PPO model if needed
@@ -106,7 +112,9 @@ if __name__ == '__main__':
             player_type_dict, 
             agent_model=agent_model, 
             ppo_agent=ppo_agent, 
-            start_stack=args.start_stack
+            start_stack=args.start_stack,
+            primary_ppo_idx=args.primary_ppo_idx,
+            primary_deep_idx=args.primary_deep_idx
         )
         
         # Randomize player order

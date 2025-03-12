@@ -286,12 +286,14 @@ def setup_training(args):
         print(f"Warm starting from: {args.warm_start}")
         ppo_agent.warm_start(args.warm_start)
     
+    # Generate timestamp for file names
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    
     # Add deep agent indicator if using deep agents
     deep_str = f"_DEEP_{args.deep_agents}" if args.deep_agents > 0 else ""
     replay_str = "_REPLAY" if args.use_replay else ""
     
     # Setup logging
-    timestamp = datetime.now().strftime('%m%d_%H%M')
     setup_str = f"PPO_{args.ppo_agents}_HEUR_{args.heuristic_agents}_RAND_{args.random_agents}{deep_str}{replay_str}"
     log_dir = os.path.join('poker', 'policy_training', 'logs')
     os.makedirs(log_dir, exist_ok=True)
@@ -306,7 +308,10 @@ def setup_training(args):
     metrics_dir = os.path.join('poker', 'policy_training', 'metrics')
     os.makedirs(metrics_dir, exist_ok=True)
     
-    return ppo_agent, setup_str, checkpoint_dir, metrics_dir
+    # Include timestamp in the setup string for all saved files
+    setup_str_with_timestamp = f"{setup_str}_{timestamp}"
+    
+    return ppo_agent, setup_str_with_timestamp, checkpoint_dir, metrics_dir
 
 def create_players(args, ppo_agent):
     """
@@ -338,7 +343,7 @@ def save_checkpoint(ppo_agent, metrics, setup_str, game_number, checkpoint_dir, 
     Args:
         ppo_agent: The PPO agent to save
         metrics: Training metrics to save
-        setup_str: String describing the training setup
+        setup_str: String describing the training setup (already includes timestamp)
         game_number: Current game number
         checkpoint_dir: Directory to save checkpoints
         metrics_dir: Directory to save metrics
@@ -348,7 +353,7 @@ def save_checkpoint(ppo_agent, metrics, setup_str, game_number, checkpoint_dir, 
     file_ext = ".st" if save_state_dict else ".pt"
     
     # Save model checkpoint
-    checkpoint_path = os.path.join(checkpoint_dir, f"{setup_str}_{game_number}{file_ext}")
+    checkpoint_path = os.path.join(checkpoint_dir, f"{setup_str}_game{game_number}{file_ext}")
     
     if save_state_dict:
         ppo_agent.save_state_dict(checkpoint_path)
@@ -358,7 +363,7 @@ def save_checkpoint(ppo_agent, metrics, setup_str, game_number, checkpoint_dir, 
         logging.info(f"Saved full checkpoint to {checkpoint_path}")
     
     # Save metrics
-    metrics_path = os.path.join(metrics_dir, f"{setup_str}_{game_number}_metrics.pkl")
+    metrics_path = os.path.join(metrics_dir, f"{setup_str}_game{game_number}_metrics.pkl")
     with open(metrics_path, 'wb') as f:
         pickle.dump(metrics, f)
     logging.info(f"Saved metrics to {metrics_path}")
@@ -375,7 +380,7 @@ def evaluate_agent(ppo_agent, args, num_eval_games=50):
         players = []
         
         # Create one PPO player for evaluation (not training)
-        ppo_player = PlayerPPO("PPO_Eval", ppo_agent, args.start_stack)
+        ppo_player = PlayerPPO("PPO_Eval", ppo_agent, args.start_stack, primary=True)
         ppo_player.is_training = False  # Disable training during evaluation
         players.append(ppo_player)
         
@@ -425,12 +430,25 @@ def train_ppo_agent():
     if args.deep_agents > 0:
         # Create imitation model for deep agents if needed
         imitation_model = PokerPlayerNetV1(use_batchnorm=False)
-        if args.warm_start:
-            # Use warm_start model for deep agents too if specified
-            imitation_model.load_state_dict(torch.load(args.warm_start))
-        else:
-            # Default to standard model
-            imitation_model.load_state_dict(torch.load('poker/e55f94.12150310.st'))
+        try:
+            if args.warm_start:
+                # Use warm_start model for deep agents too if specified
+                state_dict = torch.load(args.warm_start)
+                imitation_model.load_state_dict(state_dict)
+            else:
+                # Try available models in order
+                for model_path in ['poker/193c5c.05050310.st', 'poker/a9e8c8.14060308.st', 'poker/6afb9.02010310.st']:
+                    try:
+                        state_dict = torch.load(model_path)
+                        imitation_model.load_state_dict(state_dict)
+                        logging.info(f"Successfully loaded deep agent model from {model_path}")
+                        break
+                    except (FileNotFoundError, RuntimeError) as e:
+                        logging.warning(f"Could not load model from {model_path}: {e}")
+                        continue
+        except Exception as e:
+            logging.warning(f"Error loading model: {e}. Initializing with random weights.")
+
         player_types[PlayerDeepAgent] = args.deep_agents
     else:
         imitation_model = None
@@ -472,7 +490,9 @@ def train_ppo_agent():
         # Add PPO players
         ppo_players = []
         for i in range(args.ppo_agents):
-            ppo_player = PlayerPPO(f"PPO_{i}", ppo_agent, args.start_stack)
+            # Set the first PPO player as primary
+            is_primary = (i == 0)
+            ppo_player = PlayerPPO(f"PPO_{i}", ppo_agent, args.start_stack, primary=is_primary)
             players.append(ppo_player)
             ppo_players.append(ppo_player)
             
@@ -654,7 +674,7 @@ def train_ppo_agent():
     
     # Always save a state_dict version at the end for easy loading in other models
     if not args.save_state_dict:
-        state_dict_path = os.path.join(checkpoint_dir, f"{setup_str}_{args.num_games}.st")
+        state_dict_path = os.path.join(checkpoint_dir, f"{setup_str}_game{args.num_games}.st")
         ppo_agent.save_state_dict(state_dict_path)
         logging.info(f"Saved additional model state_dict to {state_dict_path}")
     

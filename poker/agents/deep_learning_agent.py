@@ -305,21 +305,24 @@ class PokerPlayerNetV1(nn.Module):
         raise_log_probs = raise_sizes_distr.log_prob(raise_sizes)
         return action_log_probs, raise_log_probs
 
-    def load_state_dict(self, state_dict_path):
-        state_dict = torch.load(state_dict_path)
-        if "e55f94" not in state_dict_path:
-            super().load_state_dict(state_dict) 
-            return
-        orig_gather_net_weight = state_dict.pop("gather_net.net.8.weight")
-        orig_gather_net_bias = state_dict.pop("gather_net.net.8.bias")
-        super().load_state_dict(state_dict, strict=False)
-        
-        last_layer = self.gather_net.net[-1]
-        last_layer.weight.data[:4] = orig_gather_net_weight.data
-        last_layer.weight.data[4] = 0
+    def load_state_dict(self, state_dict):
+        if type(state_dict) == str:
+            state_dict = torch.load(state_dict)
+            if "e55f94" not in state_dict:
+                super().load_state_dict(state_dict) 
+                return
+            orig_gather_net_weight = state_dict.pop("gather_net.net.8.weight")
+            orig_gather_net_bias = state_dict.pop("gather_net.net.8.bias")
+            super().load_state_dict(state_dict, strict=False)
+            
+            last_layer = self.gather_net.net[-1]
+            last_layer.weight.data[:4] = orig_gather_net_weight.data
+            last_layer.weight.data[4] = 0
 
-        last_layer.bias.data[:4] = orig_gather_net_bias.data
-        last_layer.bias.data[4] = -2.5
+            last_layer.bias.data[:4] = orig_gather_net_bias.data
+            last_layer.bias.data[4] = -2.5
+        else:
+            super().load_state_dict(state_dict)
 
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
