@@ -33,3 +33,5 @@ python -m poker.policy_training.reinforce --num_H_players 0 --num_R_players 1 --
 
 python -m poker.policy_training.reinforce --num_H_players 1 --num_DF_players 1 --num_D_players 2 --num_games 4000 --replay_buffer_cap 500
 python -m poker.policy_training.reinforce --num_H_players 0 --num_R_players 1 --num_DF_players 1 --num_D_players 2 --num_games 4000 --lr 1e-5 --replay_buffer_cap 500
+
+# todo add a single or two training runs that run for 10k or 20k games-much longer that is

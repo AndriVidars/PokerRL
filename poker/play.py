@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--num_R_players", type=int, default=0)
     parser.add_argument("--num_D_primary_players", type=int, default=2) # deep players that we are evaluating
     parser.add_argument("--num_D_validation_players", type=int, default=0) # other deep players(using another state dict)
+    parser.add_argument("--verbose", action="store_true")
 
     args = parser.parse_args()
     agent_model_primary = PokerPlayerNetV1(use_batchnorm=False)
@@ -65,7 +66,7 @@ def main():
     for _ in tqdm(range(args.num_games)):
         players = init_players(player_type_dict, agent_model_primary, agent_model_validation) # using default stack
         random.shuffle(players)
-        game = Game(players, 10, 5, verbose=False)
+        game = Game(players, 10, 5, verbose=args.verbose)
         winner, rounds_total, eliminated, game_state_batch = game.gameplay_loop()
         winner_stats.append(('_'.join(winner.name.split("_")[:-1]), rounds_total))
         for e in eliminated:

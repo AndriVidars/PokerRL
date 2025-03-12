@@ -53,6 +53,10 @@ class PlayerDeepAgent(Player):
 
         actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]
         action = np.random.choice(actions, p=action_probs)
+        
+        if len(self.game.active_players) == 1 and action == Action.FOLD:
+            action = Action.CHECK_CALL
+
         match action:
             case Action.FOLD:
                 self.handle_fold()

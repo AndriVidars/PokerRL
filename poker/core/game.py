@@ -31,6 +31,8 @@ class Game:
         self.game_state_batches = {p: [] for p in self.players if type(p) == PlayerDeepAgent} # only collecting the game states for the RL players, because we are not computing them for other players before taking actions
         self.current_round_game_states = None
 
+        self.init_sum_stack = sum([p.stack for p in self.players])
+
         self.game_completed = False
         self.rounds_played = 0
         self.verbose = verbose
@@ -132,11 +134,11 @@ class Game:
                 init_player_idx = curr_player_idx
             
             
-            if len(self.active_players) == 1 and init_player_idx != -1:
+            if len(self.active_players) == 1 and (self.current_stage == Stage.PREFLOP or init_player_idx != -1):
                 break
 
             if len(self.active_players) == 0:
-                break # this can happen if player folds in head to head after re-raise
+                break # this can happen if player folds in head to head after re-raise all in
 
             curr_player_idx = self.next_player(curr_player_idx) # next player
 
@@ -316,4 +318,7 @@ class Game:
         self.pots = [] # reset
         self.community_cards = []
         
+
+        sum_stacks = sum([p.stack for p in self.players])
+        assert sum_stacks == self.init_sum_stack # always 2v2 with 400
               
