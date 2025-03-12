@@ -25,13 +25,13 @@ def main():
 
     args = parser.parse_args()
     agent_model_primary = PokerPlayerNetV1(use_batchnorm=False)
-    agent_model_primary.load_state_dict(state_dict=torch.load(args.primary_state_dict))
+    agent_model_primary.load_state_dict(args.primary_state_dict)
 
     agent_model_validation = None
     if args.num_D_validation_players != 0:
         assert args.primary_state_dict != args.validation_state_dict
         agent_model_validation = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model_validation.load_state_dict(state_dict=torch.load(args.frozen_state_dict))
+        agent_model_validation.load_state_dict(args.frozen_state_dict)
     
     setup_str = ''
     p_types = ['H', 'R', 'D', 'DV']

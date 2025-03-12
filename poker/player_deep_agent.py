@@ -40,6 +40,7 @@ class PlayerDeepAgent(Player):
         self.agent.train()
         
         raise_ratio = raise_ratio_dist.sample()
+        # raise_ratio = raise_ratio_dist.clamped_mean()
         # moving out of torch - do we need to do the following inside torch? for gradient updates?
 
         action_probs = action_probs.detach().numpy() # to cpu? for cuda?

@@ -84,6 +84,9 @@ class TruncatedNormal(torch.distributions.Distribution):
     def log_prob(self, value):
         return self.normal.log_prob(value)
     
+    def clamped_mean(self):
+        return clamp_ste(self._loc, self.low, self.high)
+    
     def __getitem__(self, idx):
         return TruncatedNormal(self._loc[idx], self._scale[idx], low=self.low[idx], high=self.high[idx])
     
@@ -130,7 +133,7 @@ class PokerPlayerNetV1(nn.Module):
         self.use_mse_raise = use_mse_loss_for_raise
         # init raise's std deviation weights
         self.gather_net.net[-1].weight.data[4] = 0
-        self.gather_net.net[-1].bias.data[4] = 0.1
+        self.gather_net.net[-1].bias.data[4] = -2.5
 
     @torch.no_grad()
     def get_mask_and_clamp(self, x_player_game):
@@ -302,6 +305,22 @@ class PokerPlayerNetV1(nn.Module):
         raise_log_probs = raise_sizes_distr.log_prob(raise_sizes)
         return action_log_probs, raise_log_probs
 
+    def load_state_dict(self, state_dict_path):
+        state_dict = torch.load(state_dict_path)
+        if "e55f94" not in state_dict_path:
+            super().load_state_dict(state_dict) 
+            return
+        orig_gather_net_weight = state_dict.pop("gather_net.net.8.weight")
+        orig_gather_net_bias = state_dict.pop("gather_net.net.8.bias")
+        super().load_state_dict(state_dict, strict=False)
+        
+        last_layer = self.gather_net.net[-1]
+        last_layer.weight.data[:4] = orig_gather_net_weight.data
+        last_layer.weight.data[4] = 0
+
+        last_layer.bias.data[:4] = orig_gather_net_bias.data
+        last_layer.bias.data[4] = -2.5
+
     @staticmethod
     def game_state_to_batch(state) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         player_turn, other_player_turns = state.get_effective_turns()
@@ -375,3 +394,4 @@ class PokerPlayerNetV1(nn.Module):
         dataset = GameStateTensorDataset(tensor_states)
         data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
         return data_loader
+    

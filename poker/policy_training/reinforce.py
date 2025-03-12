@@ -143,12 +143,12 @@ def main():
 
     args = parser.parse_args()
     agent_model_primary = PokerPlayerNetV1(use_batchnorm=False)
-    agent_model_primary.load_state_dict(state_dict=torch.load(args.policy_state_dict))
+    agent_model_primary.load_state_dict(args.policy_state_dict)
     
     agent_model_secondary = None
     if args.num_DF_players != 0:
         agent_model_secondary = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model_secondary.load_state_dict(state_dict=torch.load(args.frozen_state_dict))
+        agent_model_secondary.load_state_dict(args.frozen_state_dict)
 
     setup_str = ''
     p_types = ['H', 'R', 'D', 'DF']
