@@ -31,7 +31,7 @@ def main():
     if args.num_D_validation_players != 0:
         assert args.primary_state_dict != args.validation_state_dict
         agent_model_validation = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model_validation.load_state_dict(args.frozen_state_dict)
+        agent_model_validation.load_state_dict(args.validation_state_dict)
     
     setup_str = ''
     p_types = ['H', 'R', 'D', 'DV']
