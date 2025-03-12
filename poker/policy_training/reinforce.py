@@ -134,8 +134,8 @@ def main():
     parser.add_argument("--replay_buffer_cap", type=int, default=5000)
     parser.add_argument("--metric_interval", type=int, default=100)
     parser.add_argument("--checkpoint_interval", type=int, default=1000)
-    parser.add_argument("--policy_state_dict", type=str, default='poker/193c5c.05050310.st')
-    parser.add_argument("--frozen_state_dict", type=str, default='poker/193c5c.05050310.st') # if playing against some imitation agents that dont learn
+    parser.add_argument("--policy_state_dict", type=str, default='poker/e55f94.12150310.st')
+    parser.add_argument("--frozen_state_dict", type=str, default='poker/e55f94.12150310.st') # if playing against some imitation agents that dont learn
     parser.add_argument("--num_H_players", type=int, default=2) # number of heuristic players in training setup
     parser.add_argument("--num_R_players", type=int, default=0)
     parser.add_argument("--num_D_players", type=int, default=2) # number of deep agent policy players

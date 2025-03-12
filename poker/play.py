@@ -15,9 +15,9 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_games", type=int, default=10_000)
-    parser.add_argument("--primary_state_dict", type=str, default='poker/193c5c.05050310.st') # TODO, call the imitation state dicts sometihng more descriptive
-    parser.add_argument("--validation_state_dict", type=str, default='poker/a9e8c8.14060308.st') # if playing against some imitation agents that dont learn
+    parser.add_argument("--num_games", type=int, default=1000)
+    parser.add_argument("--primary_state_dict", type=str, default='poker/e55f94.12150310.st') # TODO, call the imitation state dicts sometihng more descriptive
+    parser.add_argument("--validation_state_dict", type=str, default='poker/e55f94.12150310.st') # if playing against some imitation agents that dont learn
     parser.add_argument("--num_H_players", type=int, default=2) # number of heuristic players in training setup
     parser.add_argument("--num_R_players", type=int, default=0)
     parser.add_argument("--num_D_primary_players", type=int, default=2) # deep players that we are evaluating
