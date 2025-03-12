@@ -28,7 +28,7 @@ class Game:
         self.game_state_players = {} # this is only used for the deep RL player
         
         # Player -> list of tuples(round number, list of game states with actions within round, relative stack delta from round)
-        self.game_state_batches = {p: [] for p in self.players if type(p) == PlayerDeepAgent} # only collecting the game states for the RL players, because we are not computing them for other players before taking actions
+        self.game_state_batches = {p: [] for p in self.players} # only collecting the game states for the RL players, because we are not computing them for other players before taking actions
         self.current_round_game_states = None
 
         self.init_sum_stack = sum([p.stack for p in self.players])
@@ -83,8 +83,8 @@ class Game:
                     print(f"Game won by player: {self.players[0]} after {self.rounds_played} rounds")
                 
                 # for policy learning, only collect trajectory data for primary(on policy) players
-                game_state_batches_out = {k:v for k, v in self.game_state_batches.items() if k.primary}
-                return self.players[0], self.rounds_played, self.players_eliminated, game_state_batches_out
+                # game_state_batches_out = {k:v for k, v in self.game_state_batches.items() if k.primary}
+                return self.players[0], self.rounds_played, self.players_eliminated, self.game_state_batches
 
     # for deep agent only
     def pos_from_big_blind(self, player: Player):
@@ -188,7 +188,7 @@ class Game:
 
         self.handle_blinds()
         self.active_players = set([p for p in self.players if not p.all_in]) # no players folded after blinds
-        self.current_round_game_states = {p:(p.stack, []) for p in self.active_players if type(p) == PlayerDeepAgent}
+        self.current_round_game_states = {p:(p.stack, []) for p in self.active_players}
         
         self.deck = Deck()
         for _ in range(2):
