@@ -169,8 +169,10 @@ def main():
     
     
     setup_str = setup_str[:-1]
-    timestamp = datetime.now().strftime('%d%H_%M')
-    log_file_path = f'poker/policy_training/logs/{setup_str}_{timestamp}.log'
+    setup_str = '_'.join([f"{arg}_{getattr(args, arg)}" for arg in ["lr", "batch_size", "max_grad_norm", "num_games", "replay_buffer_cap"]]) + "_" + setup_str
+    
+    timestamp = datetime.now().strftime('%d_%m_%H_%M')
+    log_file_path = f'poker/policy_training/logs/{timestamp}_{setup_str}.log'
     init_logging(log_file_path)
 
     training_loop(player_type_dict, agent_model_primary, agent_model_secondary, args.lr, args.batch_size,
