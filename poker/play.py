@@ -4,6 +4,8 @@ from poker.player_random import PlayerRandom
 from poker.player_heuristic import PlayerHeuristic
 from poker.player_deep_agent import PlayerDeepAgent
 from poker.agents.deep_learning_agent import PokerPlayerNetV1
+from poker.ppo_player import PlayerPPO
+from poker.agents.ppo_agent import PPOAgent
 from poker.utils import init_players
 import time
 import pickle
@@ -38,15 +40,30 @@ def main():
         setup_str += f'{p_types[i]}{n}_'
 
     if args.deep_players:
-        val_state_dicts = args.deep_players[0::2]
-        val_num_players = list(map(int, args.deep_players[1::2]))
-        
-        for i, state_dict in enumerate(val_state_dicts):
-            model = PokerPlayerNetV1(use_batchnorm=False)
-            model.load_state_dict(state_dict)
-            name_prefix = state_dict.split('/')[-1].split('.')[0]
-            player_type_dict[(PlayerDeepAgent, False, name_prefix)] = (val_num_players[i], model)
-            setup_str += f'{name_prefix}_{val_num_players[i]}_'
+        val_model_names = args.deep_players[0::3]
+        val_state_dicts = args.deep_players[1::3]
+        val_num_players = list(map(int, args.deep_players[2::3]))
+
+        for i, (model_name, state_dict) in enumerate(zip(val_model_names, val_state_dicts)):
+            if model_name == 'deep':
+                model = PokerPlayerNetV1(use_batchnorm=False)
+                model.load_state_dict(state_dict)
+                name_prefix = state_dict.split('/')[-1].split('.')[0]
+                player_type_dict[(PlayerDeepAgent, False, name_prefix)] = (val_num_players[i], model)
+                setup_str += f'{model_name}_{name_prefix}_{val_num_players[i]}_'
+            elif model_name == 'ppo':
+                model = PPOAgent()
+                model.load(state_dict)
+                model.policy.eval()
+                model.old_policy.eval()
+                name_prefix = state_dict.split('/')[-1].split('.')[0]
+                player_type_dict[(PlayerPPO, False, name_prefix)] = (val_num_players[i], model)
+                setup_str += f'{model_name}_{name_prefix}_{val_num_players[i]}_'
+
+            else:
+                raise ValueError(f"Unknown model name: {model_name}")
+
+            
 
     setup_str = setup_str[:-1]
 
