@@ -67,7 +67,7 @@ def main():
         players = init_players(player_type_dict, agent_model_primary, agent_model_validation) # using default stack
         random.shuffle(players)
         game = Game(players, 10, 5, verbose=args.verbose)
-        winner, rounds_total, eliminated, game_state_batch = game.gameplay_loop()
+        winner, rounds_total, eliminated, _, game_state_batch = game.gameplay_loop()
         winner_stats.append(('_'.join(winner.name.split("_")[:-1]), rounds_total))
         for e in eliminated:
             eliminated_stats.append(

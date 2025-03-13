@@ -56,7 +56,7 @@ def training_loop(player_type_dict, agent_model_primary:PokerPlayerNetV1, agent_
         
         game = Game(players, 10, 5, verbose=False)
         try:
-            winner, _, _, game_state_batch = game.gameplay_loop()
+            winner, _, _, game_state_batch, _ = game.gameplay_loop()
         except:
             logging.exception("Error in gameplay loop")
             # TODO if the Normal error occurs in forward, re-initialize the model from latest state dir and reset the optimizer accordingly

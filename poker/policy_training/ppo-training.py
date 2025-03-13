@@ -409,7 +409,7 @@ def evaluate_agent(ppo_agent, args, num_eval_games=50):
         
         # Create and run game
         game = Game(players, args.big_blind, args.small_blind, verbose=False)
-        winner, _, _, _ = game.gameplay_loop()
+        winner, _, _, _, _ = game.gameplay_loop()
         
         # Record results
         if type(winner) == PlayerPPO:
@@ -538,7 +538,7 @@ def train_ppo_agent():
             player.reset_for_new_round()
         
         # Run the game
-        winner, rounds_played, eliminated, game_state_batch = game.gameplay_loop()
+        winner, rounds_played, eliminated, game_state_batch, _ = game.gameplay_loop()
         games_played += 1
         
         # Process game results
