@@ -33,7 +33,7 @@ def main():
         if p_types[i] == 'H':
             player_type_dict[(PlayerHeuristic, False, 'H')] = (n, None)
         elif p_types[i] == 'R':
-            player_type_dict[(PlayerRandom, False), 'R'] = (n, None)
+            player_type_dict[(PlayerRandom, False, 'R')] = (n, None)
             
         setup_str += f'{p_types[i]}{n}_'
 

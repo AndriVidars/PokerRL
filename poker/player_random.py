@@ -5,6 +5,10 @@ import numpy as np
 import random
 
 class PlayerRandom(Player):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.primary=False
+
     def _act(self):
         max_raise_amt = self.max_raise_amount()
         actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]

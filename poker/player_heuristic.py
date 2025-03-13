@@ -6,6 +6,10 @@ import poker.core.hand_evaluator as hand_eval
 import random
 
 class PlayerHeuristic(Player):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.primary=False
+
     def _act(self):
         action, raise_amt = None, 0
         match self.game.current_stage:

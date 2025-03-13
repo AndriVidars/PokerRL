@@ -308,10 +308,10 @@ class PokerPlayerNetV1(nn.Module):
     def load_state_dict(self, state_dict):
         if type(state_dict) == str:
             if "e55f94" not in state_dict:
+                state_dict = torch.load(state_dict)
                 super().load_state_dict(state_dict) 
                 return
             state_dict = torch.load(state_dict)
-
             orig_gather_net_weight = state_dict.pop("gather_net.net.8.weight")
             orig_gather_net_bias = state_dict.pop("gather_net.net.8.bias")
             super().load_state_dict(state_dict, strict=False)
