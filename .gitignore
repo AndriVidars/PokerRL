@@ -181,4 +181,10 @@ cython_debug/
 test_copy.ipynb
 game_log.txt
 
-poker/policy_training/checkpoints/*
+poker/policy_training/checkpoints*
+poker/policy_training/metrics*
+poker/policy_training/log*
+
+run*
+
+poker/policy_training/ppo-batch-training.py
