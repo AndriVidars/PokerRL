@@ -14,6 +14,7 @@ import random
 import torch
 import argparse
 import os
+from datetime import datetime
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run poker games with different agent types')
@@ -104,6 +105,10 @@ if __name__ == '__main__':
             param.requires_grad = False
         ppo_agent.policy.eval()
         ppo_agent.old_policy.eval()
+        
+        # Store model information for reference
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+        print(f"Evaluation timestamp: {timestamp}")
 
     # Run games
     for _ in tqdm(range(args.num_games)):
@@ -152,10 +157,14 @@ if __name__ == '__main__':
     for player_type, count in win_counts.items():
         print(f"{player_type}: {count} wins ({count/args.num_games*100:.2f}%)")
 
-    # Save results
-    fname_stats = os.path.join(args.output_dir, f'stats_{players_str}_{args.num_games}.pkl')
-    fname_batches = os.path.join(args.output_dir, f'game_state_batches_{players_str}_{args.num_games}.pkl')
+    # Generate timestamp for filenames
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+    
+    # Save results with timestamp
+    fname_stats = os.path.join(args.output_dir, f'stats_{players_str}_{timestamp}_games{args.num_games}.pkl')
+    fname_batches = os.path.join(args.output_dir, f'game_state_batches_{players_str}_{timestamp}_games{args.num_games}.pkl')
 
+    print(f"Saving results to {fname_stats}")
     with open(fname_stats, 'wb') as f:
         pickle.dump((winner_stats, eliminated_stats), f)
     

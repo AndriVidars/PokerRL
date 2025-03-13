@@ -239,15 +239,17 @@ def parse_args():
     # Training parameters
     parser.add_argument('--num_games', type=int, default=10000, help='Number of games to train for')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for PPO updates')
-    parser.add_argument('--lr', type=float, default=5e-5, help='Learning rate')
-    parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
-    parser.add_argument('--eps_clip', type=float, default=0.2, help='PPO clip parameter')
-    parser.add_argument('--k_epochs', type=int, default=100, help='Number of epochs for PPO updates')
-    parser.add_argument('--replay_buffer_cap', type=int, default=10000, help='Maximum size of replay buffer')
+    parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate')
+    parser.add_argument('--gamma', type=float, default=1.0, help='Discount factor (1.0 = no discounting)')
+    parser.add_argument('--eps_clip', type=float, default=0.3, help='PPO clip parameter')
+    parser.add_argument('--k_epochs', type=int, default=5, help='Number of epochs for PPO updates')
+    parser.add_argument('--replay_buffer_cap', type=int, default=5000, help='Maximum size of replay buffer')
     
     # Game parameters
-    parser.add_argument('--ppo_agents', type=int, default=2, help='Number of PPO agents')
-    parser.add_argument('--heuristic_agents', type=int, default=2, help='Number of heuristic agents')
+    parser.add_argument('--ppo_agents', type=int, default=2, help='Number of PPO agents that are training')
+    parser.add_argument('--ppo_opponents', type=int, default=0, help='Number of PPO agents that act as fixed opponents (not training)')
+    parser.add_argument('--opponent_model', type=str, default=None, help='Model path for PPO opponents (if None, uses the same model as training agents)')
+    parser.add_argument('--heuristic_agents', type=int, default=0, help='Number of heuristic agents')
     parser.add_argument('--random_agents', type=int, default=0, help='Number of random agents')
     parser.add_argument('--deep_agents', type=int, default=2, help='Number of deep agents')
     parser.add_argument('--start_stack', type=int, default=400, help='Starting chip stack')
@@ -286,15 +288,21 @@ def setup_training(args):
         print(f"Warm starting from: {args.warm_start}")
         ppo_agent.warm_start(args.warm_start)
     
+    # Log PPO opponent configuration
+    if args.ppo_opponents > 0:
+        opponent_model_str = args.opponent_model if args.opponent_model else "same as training model"
+        print(f"Using {args.ppo_opponents} PPO opponents with model: {opponent_model_str}")
+    
     # Generate timestamp for file names
     timestamp = datetime.now().strftime('%Y%m%d_%H%M')
     
     # Add deep agent indicator if using deep agents
     deep_str = f"_DEEP_{args.deep_agents}" if args.deep_agents > 0 else ""
     replay_str = "_REPLAY" if args.use_replay else ""
+    opponents_str = f"_PPOOP_{args.ppo_opponents}" if args.ppo_opponents > 0 else ""
     
     # Setup logging
-    setup_str = f"PPO_{args.ppo_agents}_HEUR_{args.heuristic_agents}_RAND_{args.random_agents}{deep_str}{replay_str}"
+    setup_str = f"PPO_{args.ppo_agents}{opponents_str}_HEUR_{args.heuristic_agents}_RAND_{args.random_agents}{deep_str}{replay_str}"
     log_dir = os.path.join('poker', 'policy_training', 'logs')
     os.makedirs(log_dir, exist_ok=True)
     log_file_path = os.path.join(log_dir, f"{setup_str}_{timestamp}.log")
@@ -384,8 +392,15 @@ def evaluate_agent(ppo_agent, args, num_eval_games=50):
         ppo_player.is_training = False  # Disable training during evaluation
         players.append(ppo_player)
         
-        # Create heuristic opponents
-        for i in range(args.ppo_agents + args.heuristic_agents + args.random_agents - 1):
+        # Create PPO opponents for evaluation (using the same model as training)
+        for i in range(args.ppo_opponents):
+            opponent = PlayerPPO(f"PPO_Opponent_Eval_{i}", ppo_agent, args.start_stack, primary=False)
+            opponent.is_training = False
+            players.append(opponent)
+        
+        # Create other opponents to match the total number of players in training
+        remaining_players = args.ppo_agents + args.heuristic_agents + args.random_agents + args.deep_agents - 1
+        for i in range(remaining_players - args.ppo_opponents):
             player = PlayerHeuristic(f"Heuristic_Eval_{i}", args.start_stack)
             players.append(player)
         
@@ -430,24 +445,7 @@ def train_ppo_agent():
     if args.deep_agents > 0:
         # Create imitation model for deep agents if needed
         imitation_model = PokerPlayerNetV1(use_batchnorm=False)
-        try:
-            if args.warm_start:
-                # Use warm_start model for deep agents too if specified
-                state_dict = torch.load(args.warm_start)
-                imitation_model.load_state_dict(state_dict)
-            else:
-                # Try available models in order
-                for model_path in ['poker/193c5c.05050310.st', 'poker/a9e8c8.14060308.st', 'poker/6afb9.02010310.st']:
-                    try:
-                        state_dict = torch.load(model_path)
-                        imitation_model.load_state_dict(state_dict)
-                        logging.info(f"Successfully loaded deep agent model from {model_path}")
-                        break
-                    except (FileNotFoundError, RuntimeError) as e:
-                        logging.warning(f"Could not load model from {model_path}: {e}")
-                        continue
-        except Exception as e:
-            logging.warning(f"Error loading model: {e}. Initializing with random weights.")
+        imitation_model.load_state_dict('poker/e55f94.12150310.st')
 
         player_types[PlayerDeepAgent] = args.deep_agents
     else:
@@ -464,7 +462,12 @@ def train_ppo_agent():
         'cumulative_rewards': [],      # Track cumulative rewards over training
         'episode_rewards': [],         # Track individual episode rewards
         'mean_episode_rewards': [],    # Track mean episode rewards per interval
-        'cumulative_reward_history': []  # Track cumulative reward at each game
+        'cumulative_reward_history': [], # Track cumulative reward at each game
+        'best_model': {                # Track information about the best model
+            'game_number': 0,
+            'win_rate': 0.0,
+            'stack_change': 0.0
+        }
     }
     
     games_played = 0
@@ -475,6 +478,10 @@ def train_ppo_agent():
     # Initialize reward tracking
     cumulative_reward = 0.0
     episode_rewards = []
+    
+    # Track best model performance
+    best_eval_win_rate = 0.0
+    best_model_game_number = 0
     
     # Initialize replay buffer if using experience replay
     replay_buffer = []
@@ -487,14 +494,39 @@ def train_ppo_agent():
         # Create regular players
         players, _ = init_players(player_types, agent_model=imitation_model, start_stack=args.start_stack)
         
-        # Add PPO players
+        # Create opponent PPO agent if needed
+        opponent_ppo_agent = None
+        if args.ppo_opponents > 0:
+            if args.opponent_model:
+                # Create separate PPO agent for opponents using specified model
+                opponent_ppo_agent = PPOAgent(device=device)
+                try:
+                    opponent_ppo_agent.load(args.opponent_model)
+                    logging.info(f"Loaded opponent model from {args.opponent_model}")
+                except Exception as e:
+                    logging.error(f"Failed to load opponent model: {e}")
+                    # Fall back to using the same model as training agents
+                    opponent_ppo_agent = ppo_agent
+                    logging.info("Using training model for opponents")
+            else:
+                # Use the same agent for opponents (but they won't contribute to training)
+                opponent_ppo_agent = ppo_agent
+        
+        # Add training PPO players
         ppo_players = []
         for i in range(args.ppo_agents):
             # Set the first PPO player as primary
             is_primary = (i == 0)
-            ppo_player = PlayerPPO(f"PPO_{i}", ppo_agent, args.start_stack, primary=is_primary)
+            ppo_player = PlayerPPO(f"PPO_Train_{i}", ppo_agent, args.start_stack, primary=is_primary)
             players.append(ppo_player)
             ppo_players.append(ppo_player)
+        
+        # Add non-training PPO opponents
+        for i in range(args.ppo_opponents):
+            # Create opponent that doesn't train
+            opponent = PlayerPPO(f"PPO_Opponent_{i}", opponent_ppo_agent, args.start_stack, primary=False)
+            opponent.is_training = False  # Disable training for opponent
+            players.append(opponent)
             
         random.shuffle(players)  # Randomize player order
         
@@ -655,6 +687,22 @@ def train_ppo_agent():
             metrics['eval_win_rates'].append(eval_win_rate)
             metrics['eval_stack_changes'].append(eval_stack_change)
             
+            # Track best model so far based on eval win rate
+            if eval_win_rate > best_eval_win_rate:
+                best_eval_win_rate = eval_win_rate
+                best_model_game_number = game_number
+                
+                # Update metrics for best model
+                metrics['best_model']['game_number'] = game_number
+                metrics['best_model']['win_rate'] = eval_win_rate
+                metrics['best_model']['stack_change'] = eval_stack_change
+                
+                # Save the best model immediately
+                best_model_path = os.path.join(checkpoint_dir, f"{setup_str}_best_model.st")
+                ppo_agent.save_state_dict(best_model_path)
+                logging.info(f"New best model! Win rate: {best_eval_win_rate:.4f} at game {best_model_game_number}")
+                logging.info(f"Saved best model to {best_model_path}")
+            
             # Store a snapshot of all episode rewards at each evaluation point
             metrics['episode_rewards'].append(list(episode_rewards))
             
@@ -664,10 +712,34 @@ def train_ppo_agent():
         # Save checkpoint periodically
         if game_number % args.checkpoint_interval == 0:
             save_checkpoint(ppo_agent, metrics, setup_str, game_number, checkpoint_dir, metrics_dir, args.save_state_dict)
+            
+            # Also save the current best model at each checkpoint interval
+            if best_model_game_number > 0:
+                logging.info(f"Current best model is from game {best_model_game_number} with win rate: {best_eval_win_rate:.4f}")
     
     # Final evaluation and checkpoint
     eval_win_rate, eval_stack_change = evaluate_agent(ppo_agent, args, num_eval_games=100)
     logging.info(f"Final evaluation - Win rate: {eval_win_rate:.4f}, Avg stack change: {eval_stack_change:.4f}")
+    
+    # Compare with best model
+    if best_model_game_number > 0:
+        logging.info(f"Best model was from game {best_model_game_number} with win rate: {best_eval_win_rate:.4f}")
+        
+        # Check if final model is better than best model so far
+        if eval_win_rate > best_eval_win_rate:
+            logging.info(f"Final model is the best model! Updating best model.")
+            best_eval_win_rate = eval_win_rate
+            best_model_game_number = args.num_games
+            
+            # Update metrics for best model
+            metrics['best_model']['game_number'] = args.num_games
+            metrics['best_model']['win_rate'] = eval_win_rate
+            metrics['best_model']['stack_change'] = eval_stack_change
+            
+            # Update best model file
+            best_model_path = os.path.join(checkpoint_dir, f"{setup_str}_best_model.st")
+            ppo_agent.save_state_dict(best_model_path)
+            logging.info(f"Saved new best model to {best_model_path}")
     
     # Save final checkpoint
     save_checkpoint(ppo_agent, metrics, setup_str, args.num_games, checkpoint_dir, metrics_dir, args.save_state_dict)

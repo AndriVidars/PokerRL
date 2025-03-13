@@ -55,6 +55,8 @@ class PlayerPPO(Player):
 
         # Store the action for reward calculation later
         self.recent_actions.append((action, raise_amount))
+        if action == Action.FOLD and self.get_call_amt_due() == 0: 
+             action = Action.CHECK_CALL
         
         # Execute the action
         match action:

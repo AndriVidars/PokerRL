@@ -52,6 +52,9 @@ class PlayerDeepAgent(Player):
 
         actions = [Action.FOLD, Action.CHECK_CALL, Action.RAISE]
         action = np.random.choice(actions, p=action_probs)
+        if action == Action.FOLD and self.get_call_amt_due() == 0: # same as heuristic
+             action = Action.CHECK_CALL
+             
         match action:
             case Action.FOLD:
                 self.handle_fold()

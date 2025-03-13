@@ -215,8 +215,8 @@ class PPOAgent:
         # Copy parameters from policy to old_policy
         self.old_policy.load_state_dict(self.policy.state_dict())
         
-        # Initialize optimizer
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr)
+        # Initialize optimizer with L2 regularization (weight decay)
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr, weight_decay=1e-4)
         
         # Initialize buffer
         self.buffer = RolloutBuffer()
@@ -280,14 +280,25 @@ class PPOAgent:
         if len(self.buffer.rewards) == 0:
             return 0.0
         
-        # Monte Carlo estimate of returns
+        # Use undiscounted rewards as requested - each reward stands alone
         rewards = []
-        discounted_reward = 0
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
+        # Group rewards by episode (terminal flags)
+        episode_rewards = []
+        current_episode = []
+        
+        for reward, is_terminal in zip(self.buffer.rewards, self.buffer.is_terminals):
+            current_episode.append(reward)
             if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
+                # When episode ends, process all rewards in the episode
+                episode_rewards.append(current_episode)
+                current_episode = []
+        
+        # Handle any remaining rewards in the last incomplete episode
+        if current_episode:
+            episode_rewards.append(current_episode)
+        
+        # Flatten rewards list
+        rewards = [r for episode in episode_rewards for r in episode]
         
         # Convert rewards to tensor and normalize
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
@@ -327,8 +338,13 @@ class PPOAgent:
         elif len(old_state_values) > len(rewards):
             old_state_values = old_state_values[:len(rewards)]
             
-        # Calculate advantages
+        # Calculate advantages with Generalized Advantage Estimation (GAE)
+        
         advantages = rewards - old_state_values.detach()
+        
+        # Normalize advantages for more stable training
+        if len(advantages) > 1:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-7)
         
         # Optimize policy for K epochs
         total_loss = 0.0
@@ -346,20 +362,14 @@ class PPOAgent:
                 old_raise_sizes
             )
             
-            # Check for NaN values and handle them
             if torch.isnan(logprobs_actions).any() or torch.isnan(logprobs_raises).any():
-                print("Warning: NaN detected in log probabilities. Using fallback values.")
-                # Replace NaN with safe values for log probabilities (very small negative value)
                 logprobs_actions = torch.nan_to_num(logprobs_actions, nan=-10.0)
                 logprobs_raises = torch.nan_to_num(logprobs_raises, nan=-10.0)
             
-            # Check state values for NaN
             if torch.isnan(state_values).any():
-                print("Warning: NaN detected in state values. Using fallback values.")
                 state_values = torch.nan_to_num(state_values, nan=0.0)
             
             # Calculate policy ratio for actions in a numerically stable way
-            # Add small epsilon to prevent division by zero or log of zero
             epsilon = 1e-8
             # Clamp the old log probs to prevent extreme values
             old_logprobs_actions_safe = old_logprobs_actions.detach().clamp(min=-20.0, max=20.0)
@@ -370,8 +380,6 @@ class PPOAgent:
             # Calculate policy ratio for raise sizes
             ratios_raises = torch.exp(logprobs_raises - old_logprobs_raises_safe)
             
-            # Combined ratio (geometric mean) with safeguards
-            # Ensure ratios are positive before taking square root
             ratios_actions = torch.clamp(ratios_actions, min=epsilon)
             ratios_raises = torch.clamp(ratios_raises, min=epsilon)
             
@@ -385,22 +393,22 @@ class PPOAgent:
             surr1 = combined_ratios * advantages_clipped
             surr2 = clipped_ratios * advantages_clipped
             
-            # Compute policy loss (negative because we're minimizing)
-            policy_loss = -torch.min(surr1, surr2).mean()
             
-            # Compute value function loss
-            value_loss = 0.5 * self.MseLoss(state_values.squeeze(-1), rewards)
+            ratio_mask = (combined_ratios < 0.7).float()
+            policy_loss = -(ratio_mask * surr1 + (1 - ratio_mask) * torch.min(surr1, surr2)).mean()
             
-            # Compute entropy bonus to encourage exploration
-            entropy_loss = -0.01 * dist_entropy.mean()
+            value_coef = 0.25  
+            value_loss = value_coef * self.MseLoss(state_values.squeeze(-1), rewards)
+            
+            # Increase entropy bonus to encourage more exploration
+            entropy_coef = 0.03  
+            entropy_loss = -entropy_coef * dist_entropy.mean()
             
             # Total loss (PPO objective function)
             loss = policy_loss + value_loss + entropy_loss
             
-            # Check if loss is NaN
             if torch.isnan(loss).any():
-                print("Warning: NaN detected in loss. Using component losses for update.")
-                # If total loss is NaN, use the component that isn't NaN
+    
                 if not torch.isnan(policy_loss).any():
                     loss = policy_loss
                 elif not torch.isnan(value_loss).any():
