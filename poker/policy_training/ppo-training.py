@@ -81,7 +81,9 @@ def process_batch_for_ppo(episodes, ppo_agent, device):
     return x_player_game_batch, x_acted_history_batch, x_to_act_history_batch, actions_tensor, raise_ratios_tensor, rewards_tensor
 
 def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=0.2):
-    """Train PPO from a batch of episodes"""
+    """
+    Train PPO from a batch of episodes
+    """
     # Process batch data
     x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes, rewards = process_batch_for_ppo(
         episode_batch, ppo_agent, device
@@ -110,8 +112,8 @@ def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=
         # Get state values
         old_state_values = old_state_values.squeeze(-1).detach()
     
-    # Calculate advantages
-    advantages = rewards - old_state_values
+    if len(rewards) > 1:
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
     
     # Initialize tracking of loss components
     total_loss = 0.0
@@ -120,65 +122,49 @@ def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=
     entropy_losses = 0.0
     
     for _ in range(k_epochs):
-        # Run forward pass through the policy network and get new action probabilities and values
+        # Get current action probabilities, values, and entropy
         logprobs_actions, logprobs_raises, state_values, dist_entropy = ppo_agent.policy.forward_and_evaluate(
             x_player_game, x_acted_history, x_to_act_history, actions, raise_sizes
         )
         
-        # Check for NaN values and handle them
-        if torch.isnan(logprobs_actions).any() or torch.isnan(logprobs_raises).any():
-            print("Warning: NaN detected in log probabilities during batch training. Using fallback values.")
-            logprobs_actions = torch.nan_to_num(logprobs_actions, nan=-10.0)
-            logprobs_raises = torch.nan_to_num(logprobs_raises, nan=-10.0)
+        logprobs_actions = torch.nan_to_num(logprobs_actions, nan=-10.0)
+        logprobs_raises = torch.nan_to_num(logprobs_raises, nan=-10.0)
+        state_values = torch.nan_to_num(state_values, nan=0.0)
         
-        # Check state values for NaN
-        if torch.isnan(state_values).any():
-            print("Warning: NaN detected in state values during batch training. Using fallback values.")
-            state_values = torch.nan_to_num(state_values, nan=0.0)
-            
-        # Add small epsilon to prevent division by zero or log of zero
         epsilon = 1e-8
-        
-        # Clamp old log probabilities to prevent extreme values
         old_action_log_probs_safe = old_action_log_probs.detach().clamp(min=-20.0, max=20.0)
         old_raise_log_probs_safe = old_raise_log_probs.detach().clamp(min=-20.0, max=20.0)
         
-        # Calculate policy ratios with numerical stability
         ratios_actions = torch.exp(logprobs_actions - old_action_log_probs_safe)
         ratios_raises = torch.exp(logprobs_raises - old_raise_log_probs_safe)
         
-        # Ensure ratios are positive before taking square root
         ratios_actions = torch.clamp(ratios_actions, min=epsilon)
         ratios_raises = torch.clamp(ratios_raises, min=epsilon)
         
-        # Combined ratio (geometric mean)
         combined_ratios = torch.sqrt(ratios_actions * ratios_raises)
         
-        # Clip the ratio to prevent extreme changes
         clipped_ratios = torch.clamp(combined_ratios, 1-eps_clip, 1+eps_clip)
         
-        # Clip advantages for numerical stability
-        advantages_clipped = torch.clamp(advantages, min=-10.0, max=10.0)
         
-        # Calculate surrogate losses (PPO objective function)
-        surr1 = combined_ratios * advantages_clipped
-        surr2 = clipped_ratios * advantages_clipped
+        should_raise_mask = actions == 2
+        logprobs_raises_masked = torch.where(should_raise_mask, logprobs_raises, torch.zeros_like(logprobs_raises))
         
-        # Compute policy loss 
-        policy_loss = -torch.min(surr1, surr2).mean()
+        vanilla_policy_loss = -(rewards * (logprobs_actions + logprobs_raises_masked))
         
-        # Compute value function loss
+        # rewards_clipped = torch.clamp(rewards, min=-10.0, max=10.0)
+        
+        surr1 = combined_ratios * vanilla_policy_loss
+        surr2 = clipped_ratios * vanilla_policy_loss
+        
+        policy_loss = torch.max(surr1, surr2).mean()
+        
         value_loss = 0.5 * ppo_agent.MseLoss(state_values.squeeze(-1), rewards)
         
-        # Compute entropy bonus to encourage exploration
         entropy_loss = -0.01 * dist_entropy.mean()
         
-        # Total loss (PPO objective function)
         loss = policy_loss + value_loss + entropy_loss
         
-        # Check if loss is NaN and handle it
         if torch.isnan(loss).any():
-            print("Warning: NaN detected in batch training loss. Using component losses for update.")
             if not torch.isnan(policy_loss).any():
                 loss = policy_loss
             elif not torch.isnan(value_loss).any():
@@ -187,23 +173,22 @@ def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=
                 print("All loss components are NaN. Skipping update.")
                 continue
         
-        # Track losses for each component
+        # Track losses
         policy_losses += policy_loss.item()
         value_losses += value_loss.item()
         entropy_losses += entropy_loss.item()
         total_loss += loss.item()
         
-        # Perform gradient step
         ppo_agent.optimizer.zero_grad()
         loss.backward()
         
+        # Check for NaN gradients
         has_nan_grads = False
         for name, param in ppo_agent.policy.named_parameters():
             if param.grad is not None and torch.isnan(param.grad).any():
                 has_nan_grads = True
                 print(f"Warning: NaN gradient detected in {name} during batch training")
         
-        # Skip update if gradients contain NaN
         if has_nan_grads:
             print("Skipping parameter update due to NaN gradients in batch training")
             continue
@@ -211,10 +196,8 @@ def train_ppo_from_batch(ppo_agent, episode_batch, device, k_epochs=4, eps_clip=
         torch.nn.utils.clip_grad_norm_(ppo_agent.policy.parameters(), max_norm=0.5)
         ppo_agent.optimizer.step()
     
-    # Update old policy to current policy
     ppo_agent.old_policy.load_state_dict(ppo_agent.policy.state_dict())
-    
-    # Return comprehensive loss information as a dictionary
+    # Return comprehensive loss information
     if k_epochs > 0:
         avg_loss = total_loss / k_epochs
         avg_policy_loss = policy_losses / k_epochs
@@ -274,7 +257,6 @@ def setup_training(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
     
-    # Create PPO agent
     ppo_agent = PPOAgent(
         lr=args.lr,
         gamma=args.gamma,
@@ -282,6 +264,7 @@ def setup_training(args):
         K_epochs=args.k_epochs,
         device=device
     )
+    
     
     # Warm start from pre-trained model if specified
     if args.warm_start:
@@ -302,7 +285,7 @@ def setup_training(args):
     opponents_str = f"_PPOOP_{args.ppo_opponents}" if args.ppo_opponents > 0 else ""
     
     # Setup logging
-    setup_str = f"PPO_{args.ppo_agents}{opponents_str}_HEUR_{args.heuristic_agents}_RAND_{args.random_agents}{deep_str}{replay_str}"
+    setup_str = f"{args.ppo_agents}{opponents_str}_HEUR_{args.heuristic_agents}_RAND_{args.random_agents}{deep_str}{replay_str}"
     log_dir = os.path.join('poker', 'policy_training', 'logs')
     os.makedirs(log_dir, exist_ok=True)
     log_file_path = os.path.join(log_dir, f"{setup_str}_{timestamp}.log")
@@ -409,7 +392,7 @@ def evaluate_agent(ppo_agent, args, num_eval_games=50):
         
         # Create and run game
         game = Game(players, args.big_blind, args.small_blind, verbose=False)
-        winner, _, _, _, _ = game.gameplay_loop()
+        winner, _, _, _ = game.gameplay_loop()
         
         # Record results
         if type(winner) == PlayerPPO:
@@ -538,7 +521,7 @@ def train_ppo_agent():
             player.reset_for_new_round()
         
         # Run the game
-        winner, rounds_played, eliminated, game_state_batch, _ = game.gameplay_loop()
+        winner, rounds_played, eliminated, game_state_batch = game.gameplay_loop()
         games_played += 1
         
         # Process game results
@@ -590,6 +573,7 @@ def train_ppo_agent():
                     eps_clip=args.eps_clip
                 )
                 
+                
                 # Handle different loss return formats
                 if isinstance(loss_info, dict):
                     ppo_losses.append(loss_info)
@@ -606,7 +590,6 @@ def train_ppo_agent():
             if update_counter >= args.batch_size:
                 loss_info = ppo_agent.update()
                 
-                # Handle different loss return formats
                 if isinstance(loss_info, dict):
                     ppo_losses.append(loss_info)
                     if args.verbose:
