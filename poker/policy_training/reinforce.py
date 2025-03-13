@@ -35,7 +35,7 @@ def extract_game_states_and_actions(game_state_batch):
     return episodes
 
 
-def training_loop(player_type_dict, agent_model_primary:PokerPlayerNetV1, agent_model_secondary=None,
+def training_loop(player_type_dict, agent_model_primary:PokerPlayerNetV1,
                   lr=1e-4, batch_size=16, max_grad_norm=0.25, num_games=10_000, replay_buffer_cap=10_000,
                    metric_interval=1000, checkpoint_interval=10_000, stack_size=400, setup_str='', verbose=True):
     
@@ -51,7 +51,7 @@ def training_loop(player_type_dict, agent_model_primary:PokerPlayerNetV1, agent_
     i = 0
     progress_bar = tqdm(total=num_games)
     while i < num_games:
-        players = init_players(player_type_dict, agent_model_primary, agent_model_secondary, stack_size)
+        players = init_players(player_type_dict, stack_size)
         random.shuffle(players)
         
         game = Game(players, 10, 5, verbose=False)
@@ -134,39 +134,43 @@ def main():
     parser.add_argument("--replay_buffer_cap", type=int, default=1000)
     parser.add_argument("--metric_interval", type=int, default=100)
     parser.add_argument("--checkpoint_interval", type=int, default=500)
-    parser.add_argument("--policy_state_dict", type=str, default='poker/e55f94.12150310.st')
-    parser.add_argument("--frozen_state_dict", type=str, default='poker/e55f94.12150310.st') # if playing against some imitation agents that dont learn
-    parser.add_argument("--num_H_players", type=int, default=2) # number of heuristic players in training setup
+    parser.add_argument("--policy_state_dict", type=str, default='R1.st') # if playing against some imitation agents that dont learn
+    parser.add_argument("--num_H_players", type=int, default=0) # number of heuristic players in training setup
     parser.add_argument("--num_R_players", type=int, default=0)
     parser.add_argument("--num_D_players", type=int, default=2) # number of deep agent policy players
-    parser.add_argument("--num_DF_players", type=int, default=0) # number of frozen pretrained deep agent players
+    parser.add_argument("--validation_players", nargs="+")
 
     args = parser.parse_args()
     agent_model_primary = PokerPlayerNetV1(use_batchnorm=False)
     agent_model_primary.load_state_dict(args.policy_state_dict)
     
-    agent_model_secondary = None
-    if args.num_DF_players != 0:
-        agent_model_secondary = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model_secondary.load_state_dict(args.frozen_state_dict)
-
     setup_str = ''
-    p_types = ['H', 'R', 'D', 'DF']
-    player_args = [args.num_H_players, args.num_R_players, args.num_D_players, args.num_DF_players]
+    p_types = ['H', 'R', 'D']
+    player_args = [args.num_H_players, args.num_R_players, args.num_D_players]
     player_type_dict = {}
 
     for i, n in enumerate(player_args):
         if n == 0:
             continue
         if p_types[i] == 'H':
-            player_type_dict[(PlayerHeuristic, False)] = n
+            player_type_dict[(PlayerHeuristic, False, 'H')] = (n, None)
         elif p_types[i] == 'R':
-            player_type_dict[(PlayerRandom, False)] = n
+            player_type_dict[(PlayerRandom, False, 'R')] = (n, None)
         else:
-            player_type_dict[(PlayerDeepAgent, p_types[i] == 'D')] = n
+            player_type_dict[(PlayerDeepAgent, True, args.policy_state_dict.split('/')[-1].split('.')[0])] = (n, agent_model_primary)
 
         setup_str += f'{p_types[i]}{n}_'
     
+    if args.validation_players:
+        val_state_dicts = args.validation_players[0::2]
+        val_num_players = list(map(int, args.validation_players[1::2]))
+        
+        for i, state_dict in enumerate(val_state_dicts):
+            model = PokerPlayerNetV1(use_batchnorm=False)
+            model.load_state_dict(state_dict)
+            name_prefix = state_dict.split('/')[-1].split('.')[0]
+            player_type_dict[(PlayerDeepAgent, False, name_prefix)] = (val_num_players[i], model)
+            setup_str += f'{name_prefix}_{val_num_players[i]}_'
     
     setup_str = setup_str[:-1]
     setup_str = '_'.join([f"{arg}_{getattr(args, arg)}" for arg in ["lr", "batch_size", "max_grad_norm", "num_games", "replay_buffer_cap"]]) + "_" + setup_str
@@ -175,7 +179,7 @@ def main():
     log_file_path = f'poker/policy_training/logs/{timestamp}_{setup_str}.log'
     init_logging(log_file_path)
 
-    training_loop(player_type_dict, agent_model_primary, agent_model_secondary, args.lr, args.batch_size,
+    training_loop(player_type_dict, agent_model_primary, args.lr, args.batch_size,
                   args.max_grad_norm, args.num_games, args.replay_buffer_cap, args.metric_interval,
                   args.checkpoint_interval, setup_str=setup_str)
                   

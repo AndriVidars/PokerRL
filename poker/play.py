@@ -16,47 +16,40 @@ import argparse
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_games", type=int, default=1000)
-    parser.add_argument("--primary_state_dict", type=str, default='poker/e55f94.12150310.st') # TODO, call the imitation state dicts sometihng more descriptive
-    parser.add_argument("--validation_state_dict", type=str, default='poker/e55f94.12150310.st') # if playing against some imitation agents that dont learn
-    parser.add_argument("--num_H_players", type=int, default=2) # number of heuristic players in training setup
+    parser.add_argument("--primary_state_dict", type=str, default='R1.st') # TODO, call the imitation state dicts sometihng more descriptive
+    parser.add_argument("--num_H_players", type=int, default=0) # number of heuristic players in training setup
     parser.add_argument("--num_R_players", type=int, default=0)
-    parser.add_argument("--num_D_primary_players", type=int, default=2) # deep players that we are evaluating
-    parser.add_argument("--num_D_validation_players", type=int, default=0) # other deep players(using another state dict)
+    parser.add_argument("--deep_players", nargs="+")
     parser.add_argument("--verbose", action="store_true")
 
     args = parser.parse_args()
-    agent_model_primary = PokerPlayerNetV1(use_batchnorm=False)
-    agent_model_primary.load_state_dict(args.primary_state_dict)
-
-    agent_model_validation = None
-    if args.num_D_validation_players != 0:
-        assert args.primary_state_dict != args.validation_state_dict
-        agent_model_validation = PokerPlayerNetV1(use_batchnorm=False)
-        agent_model_validation.load_state_dict(args.validation_state_dict)
-    
     setup_str = ''
-    p_types = ['H', 'R', 'D', 'DV']
-    player_args = [args.num_H_players, args.num_R_players, args.num_D_primary_players, args.num_D_validation_players]
+    p_types = ['H', 'R']
+    player_args = [args.num_H_players, args.num_R_players]
     player_type_dict = {}
 
     for i, n in enumerate(player_args):
         if n == 0:
             continue
         if p_types[i] == 'H':
-            player_type_dict[(PlayerHeuristic, False)] = n
+            player_type_dict[(PlayerHeuristic, False, 'H')] = (n, None)
         elif p_types[i] == 'R':
-            player_type_dict[(PlayerRandom, False)] = n
-        else:
-            player_type_dict[(PlayerDeepAgent, p_types[i] == 'D')] = n
-
+            player_type_dict[(PlayerRandom, False), 'R'] = (n, None)
+            
         setup_str += f'{p_types[i]}{n}_'
-    
+
+    if args.deep_players:
+        val_state_dicts = args.deep_players[0::2]
+        val_num_players = list(map(int, args.deep_players[1::2]))
+        
+        for i, state_dict in enumerate(val_state_dicts):
+            model = PokerPlayerNetV1(use_batchnorm=False)
+            model.load_state_dict(state_dict)
+            name_prefix = state_dict.split('/')[-1].split('.')[0]
+            player_type_dict[(PlayerDeepAgent, False, name_prefix)] = (val_num_players[i], model)
+            setup_str += f'{name_prefix}_{val_num_players[i]}_'
+
     setup_str = setup_str[:-1]
-    if args.num_D_primary_players:
-        setup_str = args.primary_state_dict.split('/')[-1] + setup_str
-    
-    if args.num_D_validation_players:
-        setup_str = args.validation_state_dict.split('/')[-1] + setup_str
 
     st = time.time()
     winner_stats = []
@@ -64,7 +57,7 @@ def main():
     game_state_batches = []
 
     for _ in tqdm(range(args.num_games)):
-        players = init_players(player_type_dict, agent_model_primary, agent_model_validation) # using default stack
+        players = init_players(player_type_dict) # using default stack
         random.shuffle(players)
         game = Game(players, 10, 5, verbose=args.verbose)
         winner, rounds_total, eliminated, _, game_state_batch = game.gameplay_loop()

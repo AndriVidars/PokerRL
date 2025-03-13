@@ -1,22 +1,22 @@
 from poker.player_deep_agent import PlayerDeepAgent
 import logging
 
-def init_players(player_type_dict, agent_model_primary=None, agent_model_secondary=None, start_stack=400):
+def init_players(player_type_dict, start_stack=400):
     players = []
     n = len(player_type_dict.keys())
-    for i, ((player_class, primary), count) in enumerate(player_type_dict.items()):
+    for i, ((player_class, primary, name_prefix), (count, model)) in enumerate(player_type_dict.items()):
         for j in range(count):
-            player_name = f"{player_class.__name__}{'_Primary_' if primary else '_'}{i*n+j}"
+            player_name = f"{name_prefix}_{player_class.__name__}_{i*n+j}"
             if player_class == PlayerDeepAgent:
                 if primary:
-                    player = PlayerDeepAgent(player_name, agent_model_primary, start_stack, primary=True)
+                    player = PlayerDeepAgent(player_name, model, start_stack, primary=True)
                 else:
-                    player = PlayerDeepAgent(player_name, agent_model_secondary, start_stack, primary=False)
+                    player = PlayerDeepAgent(player_name, model, start_stack, primary=False)
             else:
                 player = player_class(player_name, start_stack)
 
             players.append(player)
-        
+            
     return players
 
 def init_logging(filename):
