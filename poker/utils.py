@@ -1,4 +1,5 @@
 from poker.player_deep_agent import PlayerDeepAgent
+from poker.ppo_player import PlayerPPO
 import logging
 
 def init_players(player_type_dict, start_stack=400):
@@ -12,6 +13,11 @@ def init_players(player_type_dict, start_stack=400):
                     player = PlayerDeepAgent(player_name, model, start_stack, primary=True)
                 else:
                     player = PlayerDeepAgent(player_name, model, start_stack, primary=False)
+            elif player_class == PlayerPPO:
+                if primary:
+                    player = PlayerPPO(player_name, model, start_stack, primary=True)
+                else:
+                    player = PlayerPPO(player_name, model, start_stack, primary=False)
             else:
                 player = player_class(player_name, start_stack)
 
