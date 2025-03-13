@@ -16,7 +16,6 @@ import argparse
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_games", type=int, default=1000)
-    parser.add_argument("--primary_state_dict", type=str, default='R1.st') # TODO, call the imitation state dicts sometihng more descriptive
     parser.add_argument("--num_H_players", type=int, default=0) # number of heuristic players in training setup
     parser.add_argument("--num_R_players", type=int, default=0)
     parser.add_argument("--deep_players", nargs="+")
