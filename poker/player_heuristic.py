@@ -57,7 +57,8 @@ class PlayerHeuristic(Player):
             # raise 50% of the time when pair preflop - to keep some level of unpredictability
             elif random.random() < 0.7:
                 max_bet_size = min(self.game.min_bet*5, max_raise)
-                steps = max_bet_size // self.game.min_bet
+                steps = int(max_bet_size // self.game.min_bet)
+                # steps = max_bet_size // self.game.min_bet
                 if steps  == 1:
                     return Action.RAISE, self.game.min_bet
 
@@ -97,7 +98,8 @@ class PlayerHeuristic(Player):
         hand_rank, _ = hand_eval.evaluate_hand(hand_)
         call_amt_due = self.get_call_amt_due()
         max_raise = self.stack - call_amt_due
-        max_raise_ratio = max_raise // self.game.min_bet
+        max_raise_ratio = int(max_raise // self.game.min_bet)
+        # max_raise_ratio = max_raise // self.game.min_bet
 
         # straight or better
         if hand_rank >= 5:
@@ -120,7 +122,8 @@ class PlayerHeuristic(Player):
             
             if random.random() < 0.6:
                 max_bet_size = min(max_raise, 8*self.game.min_bet)
-                max_bet_size_ratio = max_bet_size // self.game.min_bet
+                max_bet_size_ratio = int(max_bet_size // self.game.min_bet)
+                # max_bet_size_ratio = max_bet_size // self.game.min_bet
                 bet_sizes = [self.game.min_bet * i for i in range(1, max_bet_size_ratio)]
                 if bet_sizes:
                     chosen_bet = random.choice(bet_sizes)
@@ -133,8 +136,10 @@ class PlayerHeuristic(Player):
             if call_amt_due > 0.3 * self.stack:
                 return Action.FOLD, 0
             if hand_eval.high_pair(hand_) >= 11 and random.random() < 0.25:
-                min_raise = self.game.min_bet
-                max_raise_size = min(1.5 * self.game.min_bet, max_raise)
+                min_raise = int(self.game.min_bet)
+                max_raise_size = int(min(1.5 * self.game.min_bet, max_raise))
+                # min_raise = self.game.min_bet
+                # max_raise_size = min(1.5 * self.game.min_bet, max_raise)
                 if max_raise_size >= min_raise:
                     return Action.RAISE, random.randint(min_raise, max_raise_size)
                 return Action.CHECK_CALL, 0
@@ -163,7 +168,9 @@ class PlayerHeuristic(Player):
         if hand_rank == 2:
             if hand_eval.high_pair(hand_) >= 12 and call_amt_due <= 0.35 * self.stack:
                 if max_raise > self.game.min_bet and random.random() < 0.25:
-                    return Action.RAISE, random.randint(self.game.min_bet, max(int(max_raise*0.25), self.game.min_bet))
+                    min_bet = int(self.game.min_bet)
+                    max_bet = max(int(max_raise*0.25), min_bet)
+                    return Action.RAISE, random.randint(min_bet, max_bet)
                 return Action.CHECK_CALL, 0
         
         if call_amt_due == 0:
@@ -190,7 +197,9 @@ class PlayerHeuristic(Player):
         if hand_rank == 2:
             if hand_eval.high_pair(hand_) >= 12 and call_amt_due <= 0.25 * self.stack:
                 if max_raise > self.game.min_bet and random.random() < 0.25:
-                    return Action.RAISE, random.randint(self.game.min_bet, max(int(max_raise*0.25), self.game.min_bet))
+                    min_bet = int(self.game.min_bet)
+                    max_bet = max(int(max_raise*0.25), min_bet)
+                    return Action.RAISE, random.randint(min_bet, max_bet)
                 return Action.CHECK_CALL, 0
         
         if call_amt_due == 0:
