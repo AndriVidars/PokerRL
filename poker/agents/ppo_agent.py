@@ -192,6 +192,10 @@ class PPOPokerNet(PokerPlayerNetV1):
         
         print("Model warm-started from pre-trained PokerPlayerNetV1")
 
+    def eval_game_state(self, game_state):
+        batch = self.game_state_to_batch(game_state)
+        action_logits, raise_distr = self(batch[0].unsqueeze(0), batch[1].unsqueeze(0), batch[2].unsqueeze(0))[:2]
+        return torch.nn.functional.softmax(action_logits[0], dim=-1), raise_distr[0]
 
 class PPOAgent:
     def __init__(self, 
