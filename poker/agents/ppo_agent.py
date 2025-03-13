@@ -198,7 +198,7 @@ class PPOAgent:
                  lr=1e-4, 
                  gamma=0.99, 
                  eps_clip=0.2, 
-                 K_epochs=100, 
+                 K_epochs=5, 
                  use_batchnorm=False,
                  device='cpu'):
         
