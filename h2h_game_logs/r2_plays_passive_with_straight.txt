@@ -1,0 +1,86 @@
+Player Human, stack after 16 rounds: 403
+Player R2, stack after 16 rounds: 397
+
+-------------------------
+Preflop
+-------------------------
+
+small: Player R2
+big: Player Human
+Player R2, (<Action.RAISE: 2>, 10)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player R2: 10}, Eligible: {Player R2}
+Call Amount: 10
+
+It is Player Human's turn - Hand: [8♠, 10♠] - Current Stack: 393
+Enter action (0=Fold, 1=Check/Call, 2=Raise): Player Human, (<Action.CHECK_CALL: 1>, 10)
+
+-------------------------
+Flop
+-------------------------
+
+
+
+Community Cards After Flop:
+[10♥, J♠, A♠]
+
+Player R2, (<Action.CHECK_CALL: 1>, 0)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player R2: 10, Player Human: 10}, Eligible: {Player R2, Player Human}
+Call Amount: 0
+
+It is Player Human's turn - Hand: [8♠, 10♠] - Current Stack: 383
+Enter action ( 1=Check/Call, 2=Raise): Enter raise amount (min 10, max 383): Player Human, (<Action.RAISE: 2>, 20)
+Player R2, (<Action.CHECK_CALL: 1>, 20)
+
+-------------------------
+Turn
+-------------------------
+
+
+
+Community Cards After Turn:
+[10♥, J♠, A♠, 9♣]
+
+Player R2, (<Action.CHECK_CALL: 1>, 0)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player R2: 10, Player Human: 10}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 20, Player R2: 20}, Eligible: {Player R2, Player Human}
+Call Amount: 0
+
+It is Player Human's turn - Hand: [8♠, 10♠] - Current Stack: 363
+Enter action ( 1=Check/Call, 2=Raise): Player Human, (<Action.CHECK_CALL: 1>, 0)
+
+-------------------------
+River
+-------------------------
+
+
+
+Community Cards After River:
+[10♥, J♠, A♠, 9♣, 4♥]
+
+Player R2, (<Action.CHECK_CALL: 1>, 0)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player R2, Player Human}
+Contributions: {Player R2: 10, Player Human: 10}, Eligible: {Player R2, Player Human}
+Contributions: {Player Human: 20, Player R2: 20}, Eligible: {Player R2, Player Human}
+Call Amount: 0
+
+It is Player Human's turn - Hand: [8♠, 10♠] - Current Stack: 363
+Enter action ( 1=Check/Call, 2=Raise): Player Human, (<Action.CHECK_CALL: 1>, 0)
+
+
+Community cards at end of round: [10♥, J♠, A♠, 9♣, 4♥]
+Player(non-folded) hands at pot decider:
+Player Human, hand: [8♠, 10♠]
+Player R2, hand: [8♦, 7♣]
+Player Human, stack after 17 rounds: 363
+Player R2, stack after 17 rounds: 437

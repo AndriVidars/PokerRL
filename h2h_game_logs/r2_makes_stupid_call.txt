@@ -1,0 +1,85 @@
+Player R2, stack after 18 rounds: 254
+Player Human, stack after 18 rounds: 546
+
+-------------------------
+Preflop
+-------------------------
+
+small: Player Human
+big: Player R2
+Current Pot State:
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player Human, Player R2}
+Contributions: {Player R2: 5}, Eligible: {Player R2}
+Call Amount: 5
+
+It is Player Human's turn - Hand: [6♣, 7♥] - Current Stack: 541
+Enter action (0=Fold, 1=Check/Call, 2=Raise): Player Human, (<Action.FOLD: 0>, 0)
+Player R2, stack after 19 rounds: 259
+Player Human, stack after 19 rounds: 541
+
+-------------------------
+Preflop
+-------------------------
+
+small: Player R2
+big: Player Human
+Player R2, (<Action.RAISE: 2>, 10)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player Human, Player R2}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player Human, Player R2}
+Contributions: {Player R2: 10}, Eligible: {Player R2}
+Call Amount: 10
+
+It is Player Human's turn - Hand: [A♦, A♠] - Current Stack: 531
+Enter action (0=Fold, 1=Check/Call, 2=Raise): Player Human, (<Action.CHECK_CALL: 1>, 10)
+
+-------------------------
+Flop
+-------------------------
+
+
+
+Community Cards After Flop:
+[2♣, Q♦, 2♥]
+
+Player R2, (<Action.CHECK_CALL: 1>, 0)
+Current Pot State:
+Contributions: {Player R2: 5, Player Human: 5}, Eligible: {Player Human, Player R2}
+Contributions: {Player Human: 5, Player R2: 5}, Eligible: {Player Human, Player R2}
+Contributions: {Player R2: 10, Player Human: 10}, Eligible: {Player Human, Player R2}
+Call Amount: 0
+
+It is Player Human's turn - Hand: [A♦, A♠] - Current Stack: 521
+Enter action ( 1=Check/Call, 2=Raise): Enter raise amount (min 10, max 521): Player Human, (<Action.RAISE: 2>, 521)
+Player Human is now All IN
+Player R2, (<Action.CHECK_CALL: 1>, 239)
+Player R2 is now All IN
+
+-------------------------
+Turn
+-------------------------
+
+
+
+Community Cards After Turn:
+[2♣, Q♦, 2♥, 8♥]
+
+
+-------------------------
+River
+-------------------------
+
+
+
+Community Cards After River:
+[2♣, Q♦, 2♥, 8♥, J♦]
+
+
+
+Community cards at end of round: [2♣, Q♦, 2♥, 8♥, J♦]
+Player(non-folded) hands at pot decider:
+Player R2, hand: [10♠, 4♦]
+Player Human, hand: [A♦, A♠]
+Player R2 has been eliminated
+Player Human, stack after 20 rounds: 800
+Game won by player: Player Human after 20 rounds
