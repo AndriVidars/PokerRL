@@ -96,8 +96,7 @@ def is_straight(ranks):
     return False
 
 def _find_best_hand(cards):
-    """ Gets the best 5 card hand when more than 5 cards are given.
-    """
+    # Gets the best 5 card hand when more than 5 cards are given.
     best_rank = 0
     best_tiebreakers = []
     for five_cards in itertools.combinations(cards, min(5, len(cards))):
