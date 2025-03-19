@@ -188,3 +188,7 @@ poker/policy_training/log*
 run*
 
 poker/policy_training/ppo-batch-training.py
+h2h_game_log/*
+
+checkpoints/*
+*.st
