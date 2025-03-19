@@ -192,3 +192,5 @@ h2h_game_log/*
 
 checkpoints/*
 *.st
+
+*.phh
